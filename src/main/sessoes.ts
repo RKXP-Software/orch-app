@@ -14,9 +14,13 @@ import type {
   SDKMessage,
   SDKUserMessage
 } from '@anthropic-ai/claude-agent-sdk'
+import { aprovaSozinho, infoModo, modoDoSdk } from '@shared/permissoes'
+import { lerExecucao, nomeDoArquivo, salvarExecucao } from './execucoes'
 import type {
   Configuracao,
+  ContextoSessao,
   EntradaLog,
+  ModoPermissao,
   Modelo,
   NovaSessao,
   Pendencia,
@@ -82,6 +86,12 @@ interface Interna {
   respostas: Map<string, (r: RespostaPendencia) => void>
   /** tool_use_id da chamada Agent → nome do subagente, para rotular o que ele faz. */
   subagentes: Map<string, string>
+  /** Pedidos de permissão pendentes: id → ferramenta (para resolver ao trocar de modo). */
+  ferramentasPendentes: Map<string, string>
+  /** Tamanho da janela de contexto do modelo, quando já conhecido. */
+  janela: number
+  /** Id da conversa do Claude a retomar (execução reaberta). */
+  retomar: string | null
 }
 
 const agora = () => new Date().toISOString()
@@ -114,6 +124,12 @@ export function resumoFerramenta(nome: string, input: Record<string, unknown>): 
       return `${s('subagent_type') || 'agente'}: ${s('description')}`
     case 'Skill':
       return `${s('skill')} ${s('args')}`.trim()
+    case 'AskUserQuestion': {
+      const qs = Array.isArray(input.questions) ? (input.questions as { question?: string }[]) : []
+      return qs.map((q) => q.question ?? '').filter(Boolean).join(' · ')
+    }
+    case 'ExitPlanMode':
+      return 'plano proposto para aprovação'
     case 'WebFetch':
       return s('url')
     case 'WebSearch':
@@ -168,10 +184,12 @@ export async function listarModelos(cfg: Configuracao): Promise<Modelo[]> {
 export class GerenciadorSessoes {
   private sessoes = new Map<string, Interna>()
   private timers = new Map<string, NodeJS.Timeout>()
+  private gravacoes = new Map<string, NodeJS.Timeout>()
 
   constructor(
     private publicar: (s: Sessao) => void,
-    private config: () => Configuracao
+    private config: () => Configuracao,
+    private aoPendencia: (s: Sessao, p: Pendencia) => void = () => undefined
   ) {}
 
   listar(): Sessao[] {
@@ -179,19 +197,23 @@ export class GerenciadorSessoes {
   }
 
   async iniciar(nova: NovaSessao): Promise<Sessao> {
+    const id = randomUUID()
+    const iniciada = agora()
     const sessao: Sessao = {
-      id: randomUUID(),
+      id,
+      arquivo: nomeDoArquivo({ id, titulo: nova.titulo, iniciada }),
       titulo: nova.titulo,
       projeto: nova.projeto,
       prompt: nova.prompt,
       modoPermissao: nova.modoPermissao,
       modelo: nova.modelo,
       status: 'iniciando',
-      iniciada: agora(),
+      iniciada,
       sessionIdClaude: null,
       plugins: [],
       orchCarregado: null,
       custoUsd: 0,
+      contexto: null,
       log: [{ tipo: 'usuario', quando: agora(), texto: nova.prompt }],
       pendencias: []
     }
@@ -201,10 +223,43 @@ export class GerenciadorSessoes {
       abort: new AbortController(),
       query: null,
       respostas: new Map(),
-      subagentes: new Map()
+      subagentes: new Map(),
+      ferramentasPendentes: new Map(),
+      janela: 0,
+      retomar: null
     }
     this.sessoes.set(sessao.id, interna)
     interna.fila.enviar(nova.prompt)
+    void this.rodar(interna)
+    return sessao
+  }
+
+  /** Reabre uma execução gravada: o histórico vem do arquivo e a conversa do Claude é retomada (resume). */
+  async continuar(projeto: string, arquivo: string): Promise<Sessao> {
+    const viva = [...this.sessoes.values()].find((i) => i.sessao.projeto === projeto && i.sessao.arquivo === arquivo)
+    if (viva) return viva.sessao
+    const salva = lerExecucao(projeto, arquivo)
+    if (!salva) throw new Error('Execução não encontrada.')
+    if (!salva.sessionIdClaude) throw new Error('Esta execução não chegou a iniciar a conversa com o Claude; não há o que continuar.')
+    const sessao: Sessao = {
+      ...salva,
+      id: randomUUID(),
+      status: 'ociosa',
+      pendencias: [],
+      log: [...salva.log, { tipo: 'sistema', quando: agora(), texto: 'Conversa retomada. Envie uma mensagem para continuar.' }]
+    }
+    const interna: Interna = {
+      sessao,
+      fila: new FilaEntrada(),
+      abort: new AbortController(),
+      query: null,
+      respostas: new Map(),
+      subagentes: new Map(),
+      ferramentasPendentes: new Map(),
+      janela: salva.contexto?.maximo ?? 0,
+      retomar: salva.sessionIdClaude
+    }
+    this.sessoes.set(sessao.id, interna)
     void this.rodar(interna)
     return sessao
   }
@@ -222,6 +277,45 @@ export class GerenciadorSessoes {
     const resolver = i?.respostas.get(pendencia)
     if (!i || !resolver) return
     resolver(resposta)
+  }
+
+  /** Troca o modo de permissão com a sessão em andamento. */
+  async mudarModo(id: string, modo: ModoPermissao): Promise<void> {
+    const i = this.sessoes.get(id)
+    if (!i || i.sessao.modoPermissao === modo) return
+    i.sessao.modoPermissao = modo
+    await i.query?.setPermissionMode(modoDoSdk(modo)).catch(() => undefined)
+    this.log(i, { tipo: 'sistema', quando: agora(), texto: `Permissões: ${infoModo(modo).nome}` })
+    // Pedidos que estavam esperando e que o novo modo aprova sozinho seguem na hora.
+    for (const [pid, ferramenta] of i.ferramentasPendentes) {
+      if (aprovaSozinho(modo, ferramenta)) i.respostas.get(pid)?.({ tipo: 'permissao', decisao: 'permitir' })
+    }
+    this.emitir(i, true)
+  }
+
+  /** Detalhamento do contexto (o mesmo do /context do CLI). "summary" não gasta chamadas de contagem de tokens. */
+  async atualizarContexto(id: string, detalhe: 'summary' | 'full' = 'summary'): Promise<void> {
+    const i = this.sessoes.get(id)
+    if (!i?.query) return
+    try {
+      const c = await i.query.getContextUsage({ detail: detalhe })
+      i.janela = c.maxTokens || i.janela
+      const contexto: ContextoSessao = {
+        usados: c.totalTokens,
+        maximo: c.maxTokens,
+        pct: Math.round(c.percentage),
+        categorias: c.categories
+          .filter((x) => x.tokens > 0)
+          .map((x) => ({ nome: x.name, tokens: x.tokens, tipo: x.kind })),
+        memoria: c.memoryFiles.map((m) => ({ caminho: m.path, tokens: m.tokens })),
+        origem: 'detalhado',
+        atualizado: agora()
+      }
+      i.sessao.contexto = contexto
+      this.emitir(i, true)
+    } catch {
+      // Sessão já encerrada ou CLI sem suporte: mantém o último valor.
+    }
   }
 
   async interromper(id: string): Promise<void> {
@@ -259,17 +353,19 @@ export class GerenciadorSessoes {
       abortController: i.abort,
       systemPrompt: { type: 'preset', preset: 'claude_code' },
       settingSources: ['user', 'project', 'local'],
-      permissionMode: i.sessao.modoPermissao,
+      permissionMode: modoDoSdk(i.sessao.modoPermissao),
       canUseTool: this.canUseTool(i),
       ...(cfg.pluginLocal ? { plugins: [{ type: 'local', path: cfg.pluginLocal }] } : {}),
       ...((i.sessao.modelo || cfg.modeloPadrao) ? { model: i.sessao.modelo || cfg.modeloPadrao } : {}),
-      pathToClaudeCodeExecutable: executavelClaude(cfg)
+      pathToClaudeCodeExecutable: executavelClaude(cfg),
+      ...(i.retomar ? { resume: i.retomar } : {})
     }
 
     try {
       const { query } = await import('@anthropic-ai/claude-agent-sdk')
       i.query = query({ prompt: i.fila, options })
-      this.mudarStatus(i, 'executando')
+      // Retomada: fica esperando a primeira mensagem do usuário.
+      if (!i.retomar) this.mudarStatus(i, 'executando')
       for await (const m of i.query) this.tratar(i, m)
       if (!['erro', 'interrompida'].includes(i.sessao.status)) this.mudarStatus(i, 'concluida')
     } catch (e) {
@@ -289,6 +385,7 @@ export class GerenciadorSessoes {
       }
       i.sessao.pendencias = []
       this.emitir(i, true)
+      this.gravar(i, true)
     }
   }
 
@@ -309,6 +406,8 @@ export class GerenciadorSessoes {
               orch ? `orch ${orch.versao ?? ''}`.trim() : 'orch NÃO carregado'
             }`
           })
+          // Já mostra o tamanho da janela e o que ocupa o contexto desde o início.
+          void this.atualizarContexto(s.id)
           if (!orch) {
             this.log(i, {
               tipo: 'erro',
@@ -320,13 +419,21 @@ export class GerenciadorSessoes {
         } else if (m.subtype === 'task_started') {
           const agente = m.subagent_type ?? null
           if (m.tool_use_id) i.subagentes.set(m.tool_use_id, agente ?? m.description)
-          this.log(i, { tipo: 'subagente', quando: agora(), fase: 'inicio', descricao: m.description, agente })
+          this.log(i, {
+            tipo: 'subagente',
+            quando: agora(),
+            fase: 'inicio',
+            id: m.tool_use_id ?? m.task_id,
+            descricao: m.description,
+            agente
+          })
         } else if (m.subtype === 'task_notification') {
           const agente = (m.tool_use_id && i.subagentes.get(m.tool_use_id)) || null
           this.log(i, {
             tipo: 'subagente',
             quando: agora(),
             fase: 'fim',
+            id: m.tool_use_id ?? m.task_id,
             descricao: corta(m.summary, 400),
             agente,
             status: m.status
@@ -336,6 +443,7 @@ export class GerenciadorSessoes {
 
       case 'assistant': {
         const sub = m.parent_tool_use_id ? (i.subagentes.get(m.parent_tool_use_id) ?? 'subagente') : null
+        if (!sub) this.estimarContexto(i, m.message.usage)
         for (const bloco of m.message.content) {
           // O erro de login vem também como texto; ele é mostrado uma vez, como erro, no resultado.
           if (bloco.type === 'text' && !sub && bloco.text.trim() && !ehErroDeLogin(bloco.text)) {
@@ -383,6 +491,9 @@ export class GerenciadorSessoes {
 
       case 'result': {
         s.custoUsd = m.total_cost_usd
+        const janela = Object.values(m.modelUsage ?? {}).reduce((mx, u) => Math.max(mx, u.contextWindow ?? 0), 0)
+        if (janela) i.janela = janela
+        void this.atualizarContexto(s.id)
         const sucesso = m.subtype === 'success' && !m.is_error
         this.log(i, {
           tipo: 'resultado',
@@ -409,7 +520,12 @@ export class GerenciadorSessoes {
 
   private canUseTool(i: Interna): CanUseTool {
     return async (ferramenta, input, opcoes): Promise<PermissionResult> => {
+      if (aprovaSozinho(i.sessao.modoPermissao, ferramenta)) {
+        return { behavior: 'allow', updatedInput: input }
+      }
+
       const id = randomUUID()
+      const planoProposto = ferramenta === 'ExitPlanMode' && typeof input.plan === 'string' ? input.plan : null
       const pendencia: Pendencia =
         ferramenta === 'AskUserQuestion'
           ? { id, tipo: 'pergunta', perguntas: (input.questions ?? []) as Pergunta[] }
@@ -417,24 +533,27 @@ export class GerenciadorSessoes {
               id,
               tipo: 'permissao',
               ferramenta,
-              titulo: opcoes.title ?? `Claude quer usar ${ferramenta}`,
-              detalhe: [resumoFerramenta(ferramenta, input), opcoes.decisionReason, opcoes.blockedPath]
-                .filter(Boolean)
-                .join('\n'),
-              podeLembrar: (opcoes.suggestions?.length ?? 0) > 0
+              titulo: planoProposto ? 'Aprovar o plano e começar a executar?' : (opcoes.title ?? `Claude quer usar ${ferramenta}`),
+              detalhe:
+                planoProposto ??
+                [resumoFerramenta(ferramenta, input), opcoes.decisionReason, opcoes.blockedPath].filter(Boolean).join('\n'),
+              podeLembrar: !planoProposto && (opcoes.suggestions?.length ?? 0) > 0
             }
+      if (pendencia.tipo === 'permissao') i.ferramentasPendentes.set(id, ferramenta)
 
       const resposta = await new Promise<RespostaPendencia>((resolve) => {
         i.respostas.set(id, resolve)
         i.sessao.pendencias = [...i.sessao.pendencias, pendencia]
         i.sessao.status = 'aguardando-voce'
         this.emitir(i, true)
+        this.aoPendencia(i.sessao, pendencia)
         opcoes.signal.addEventListener('abort', () =>
           resolve({ tipo: 'permissao', decisao: 'negar', mensagem: 'Cancelado.' })
         )
       })
 
       i.respostas.delete(id)
+      i.ferramentasPendentes.delete(id)
       i.sessao.pendencias = i.sessao.pendencias.filter((p) => p.id !== id)
       if (i.sessao.pendencias.length === 0 && i.sessao.status === 'aguardando-voce') {
         this.mudarStatus(i, 'executando')
@@ -455,9 +574,35 @@ export class GerenciadorSessoes {
       if (resposta.decisao === 'negar') {
         return { behavior: 'deny', message: resposta.mensagem || 'O usuário negou a permissão.' }
       }
+      if (planoProposto && i.sessao.modoPermissao === 'plan') {
+        // Plano aprovado: o Claude Code sai do modo somente leitura.
+        i.sessao.modoPermissao = 'default'
+        this.log(i, { tipo: 'sistema', quando: agora(), texto: `Plano aprovado · Permissões: ${infoModo('default').nome}` })
+      }
       const lembrar: PermissionUpdate[] | undefined =
         resposta.decisao === 'permitir-sempre' ? opcoes.suggestions : undefined
       return { behavior: 'allow', updatedInput: input, ...(lembrar ? { updatedPermissions: lembrar } : {}) }
+    }
+  }
+
+  /** Entre um turno e outro: o contexto ocupado é a entrada da última chamada do agente principal. */
+  private estimarContexto(
+    i: Interna,
+    uso: { input_tokens?: number | null; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } | null | undefined
+  ): void {
+    if (!uso) return
+    const usados = (uso.input_tokens ?? 0) + (uso.cache_read_input_tokens ?? 0) + (uso.cache_creation_input_tokens ?? 0)
+    if (usados <= 0) return
+    const anterior = i.sessao.contexto
+    const maximo = anterior?.maximo || i.janela
+    i.sessao.contexto = {
+      usados,
+      maximo,
+      pct: maximo ? Math.round((usados / maximo) * 100) : 0,
+      categorias: anterior?.categorias ?? [],
+      memoria: anterior?.memoria ?? [],
+      origem: 'estimado',
+      atualizado: agora()
     }
   }
 
@@ -476,12 +621,34 @@ export class GerenciadorSessoes {
   }
 
   /** Publica com throttle de 100 ms; mudanças de status e pendências saem na hora. */
-  private emitir(i: Interna, jaJa = false): void {
+  /** Grava a execução no projeto: no máximo a cada 1 s, ou na hora (mudança de status, fim). */
+  private gravar(i: Interna, jaJa = false): void {
     const id = i.sessao.id
+    const fazer = () => {
+      this.gravacoes.delete(id)
+      try {
+        salvarExecucao(i.sessao)
+      } catch {
+        // Pasta sem permissão de escrita, por exemplo: a execução continua, só não fica gravada.
+      }
+    }
+    if (jaJa) {
+      clearTimeout(this.gravacoes.get(id))
+      fazer()
+    } else if (!this.gravacoes.has(id)) {
+      this.gravacoes.set(id, setTimeout(fazer, 1000))
+    }
+  }
+
+  private emitir(i: Interna, jaJa = false): void {
+    this.gravar(i, jaJa)
+    const id = i.sessao.id
+    // Fechada pelo usuário: o estado final ainda é gravado, mas não volta para a interface.
+    const publicar = () => this.sessoes.has(id) && this.publicar(i.sessao)
     if (jaJa) {
       clearTimeout(this.timers.get(id))
       this.timers.delete(id)
-      this.publicar(i.sessao)
+      publicar()
       return
     }
     if (this.timers.has(id)) return
@@ -489,7 +656,7 @@ export class GerenciadorSessoes {
       id,
       setTimeout(() => {
         this.timers.delete(id)
-        this.publicar(i.sessao)
+        publicar()
       }, 100)
     )
   }

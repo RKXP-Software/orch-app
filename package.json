@@ -1,7 +1,7 @@
 {
   "name": "orch-app",
   "productName": "Orch",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "App desktop para executar o plugin orch (Claude Code) e acompanhar os planos.",
   "author": "Pedro Sarmento",
   "license": "UNLICENSED",

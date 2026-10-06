@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Orch: silhueta de um orc maestro. Olhos e presas vazados; a gravata-borboleta é o maestro. -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#3d43a8"/>
+  <g fill="#ffffff">
+    <!-- cabeça e orelhas numa forma só -->
+    <path d="M64 118 L24 92 L62 158 A68 68 0 0 0 194 158 L232 92 L192 118 A68 68 0 0 0 64 118 Z"/>
+    <!-- gravata-borboleta -->
+    <path d="M128 228 L100 214 L100 242 Z M128 228 L156 214 L156 242 Z"/>
+  </g>
+  <g fill="#3d43a8">
+    <!-- olhos em fenda -->
+    <path d="M84 128 L116 138 L112 150 L86 142 Z M172 128 L140 138 L144 150 L170 142 Z"/>
+    <!-- presas -->
+    <path d="M96 196 L104 164 L114 198 Z M160 196 L152 164 L142 198 Z"/>
+  </g>
+</svg>

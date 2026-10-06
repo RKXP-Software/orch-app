@@ -415,3 +415,204 @@ button.link { border: 0; background: none; padding: 0; color: var(--acento); cur
 
 .legenda { display: flex; flex-wrap: wrap; gap: 10px 20px; font-size: 13px; color: var(--texto-2); }
 .legenda > span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- modo de permissão e contexto na sessão ---------- */
+
+.barra-modo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px 0;
+  font-size: 13px;
+}
+.barra-modo label { font-weight: 600; white-space: nowrap; }
+.barra-modo select { width: auto; padding: 4px 8px; }
+.barra-modo .ajuda { color: var(--texto-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pendencia .detalhe.plano-proposto { font-family: inherit; font-size: 13px; max-height: 320px; }
+
+.contexto { margin-bottom: 18px; }
+.contexto-barra { height: 8px; margin-bottom: 6px; }
+.contexto-barra.andamento > div { background: var(--andamento); }
+.contexto-barra.erro > div { background: var(--erro); }
+.contexto-total { font-size: 13px; }
+.contexto-categorias { list-style: none; margin: 8px 0 6px; padding: 0; font-size: 12px; }
+.contexto-categorias li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.contexto-categorias .nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texto-2); }
+.contexto-categorias .quadrado { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+/* ---------- alterações (arquivos + diff) ---------- */
+
+.conteudo.sem-rolagem { overflow: hidden; display: flex; flex-direction: column; }
+.alteracoes { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; flex: 1; min-height: 0; }
+.alteracoes-lista { overflow: auto; min-height: 0; padding-right: 4px; }
+.grupo-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--texto-2);
+  margin: 12px 0 6px;
+}
+.grupo-titulo:first-child { margin-top: 0; }
+.grupo-vazio { font-size: 12px; padding: 2px 8px 6px; }
+.arquivo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.arquivo:hover { background: var(--painel-2); }
+.arquivo.ativo { background: var(--acento-suave); }
+.arquivo-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arquivo-nome .muted { font-size: 11px; }
+.arquivo-acoes { display: none; }
+.arquivo:hover .arquivo-acoes, .arquivo.ativo .arquivo-acoes { display: flex; }
+.arquivo-acoes .botao.icone { padding: 0 6px; font-size: 15px; line-height: 20px; }
+.arquivo-acoes .botao.icone:hover { background: var(--painel); color: var(--texto); }
+.arquivo-acoes .botao.icone.perigo:hover { color: var(--erro); }
+.letra { font-family: var(--mono); font-size: 11px; font-weight: 700; width: 14px; text-align: center; flex: none; }
+.letra.ok { color: var(--ok); }
+.letra.andamento { color: var(--andamento); }
+.letra.erro { color: var(--erro); }
+.letra.acento { color: var(--acento); }
+
+.alteracoes-diff {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--painel);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  overflow: hidden;
+}
+.diff-topo { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--borda); }
+.diff { flex: 1; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.55; }
+.diff-linha { display: grid; grid-template-columns: 44px 44px 16px max-content; min-width: 100%; }
+.diff-linha .num { color: var(--texto-3); text-align: right; padding-right: 8px; user-select: none; }
+.diff-linha .sinal { color: var(--texto-3); user-select: none; }
+.diff-linha .codigo { white-space: pre; padding-right: 16px; }
+.diff-linha.d-adicionada { background: color-mix(in srgb, var(--ok) 13%, transparent); }
+.diff-linha.d-adicionada .sinal { color: var(--ok); }
+.diff-linha.d-removida { background: color-mix(in srgb, var(--erro) 13%, transparent); }
+.diff-linha.d-removida .sinal { color: var(--erro); }
+.diff-linha.d-trecho { background: var(--acento-suave); color: var(--acento); }
+.diff-linha.d-trecho .codigo, .diff-linha.d-aviso .codigo { font-style: italic; }
+.diff-linha.d-aviso { color: var(--texto-3); }
+
+/* ---------- git ---------- */
+
+.git { max-width: 1100px; }
+.git-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; align-items: start; }
+.git-cartao { padding: 14px 16px; }
+.git-branch { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 15px; font-weight: 600; }
+.git-branch .muted { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
+.git-saida { border-radius: var(--raio); padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+.git-saida.ok { background: var(--ok-suave); }
+.git-saida.erro { background: var(--erro-suave); }
+.git-saida pre { margin: 6px 0 0; white-space: pre-wrap; font-family: var(--mono); font-size: 12px; max-height: 200px; overflow: auto; }
+.git-lista { list-style: none; margin: 0; padding: 0; }
+.git-lista li { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-bottom: 1px solid var(--borda); font-size: 13px; }
+.git-lista li:last-child { border-bottom: 0; }
+.git-lista li.atual .nome { font-weight: 700; }
+.git-log { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
+.git-log li { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; padding: 6px 0; border-bottom: 1px solid var(--borda); font-size: 13px; align-items: baseline; }
+.git-log .hash { color: var(--acento); }
+.git-log .assunto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-log .autor { grid-column: 2; font-size: 11px; }
+.git-log .selo { grid-column: 3; grid-row: 1; }
+
+.mini-plano .ao-vivo { font-family: var(--mono); font-size: 10px; color: var(--andamento); white-space: nowrap; }
+
+/* Cabeçalho: abas nunca quebram; o caminho do projeto é que encurta. */
+.aba { white-space: nowrap; }
+.cabecalho > div:first-child { min-width: 0; flex: 1; }
+.cabecalho .caminho { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abas { flex: none; }
+
+/* ---------- escolha do modelo ---------- */
+
+.cartoes-modelo { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.cartao-modelo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--borda);
+  background: var(--painel);
+  border-radius: var(--raio);
+  cursor: pointer;
+}
+.cartao-modelo:hover { border-color: var(--texto-3); }
+.cartao-modelo.ativo { border-color: var(--acento); background: var(--acento-suave); box-shadow: 0 0 0 1px var(--acento); }
+.cartao-modelo strong { font-size: 14px; }
+.cartao-modelo .linha { width: 100%; }
+.cartao-modelo .quando { font-size: 12px; color: var(--texto-2); }
+.cartao-modelo .descricao-cli { font-size: 11px; color: var(--texto-3); }
+.nivel { display: inline-flex; gap: 2px; }
+.nivel span { width: 6px; height: 12px; border-radius: 2px; background: var(--neutro-suave); }
+.nivel span.cheio { background: var(--acento); }
+
+.seletor-modelo { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texto-2); }
+.seletor-modelo select { width: auto; }
+
+button.marca { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---------- dashboard / kanban ---------- */
+
+.metricas { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+.metrica { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; text-align: left; border: 1px solid var(--borda); background: var(--painel); }
+.metrica .valor { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.metrica .rotulo { font-size: 12px; color: var(--texto-2); }
+button.metrica { cursor: default; }
+button.metrica.destaque { cursor: pointer; border-color: var(--acento); background: var(--acento-suave); }
+button.metrica.destaque .valor { color: var(--acento); }
+
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: 12px; align-items: start; overflow-x: auto; padding-bottom: 12px; }
+.kanban-coluna { background: var(--painel-2); border-radius: var(--raio); padding: 10px; min-height: 240px; display: flex; flex-direction: column; gap: 8px; border: 2px dashed transparent; }
+.kanban-coluna.alvo { border-color: var(--acento); }
+.kanban-titulo { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; padding: 2px 4px; }
+.kanban-vazio { font-size: 12px; color: var(--texto-3); padding: 8px 4px; }
+.kanban-cartao { padding: 10px 12px; cursor: grab; display: flex; flex-direction: column; gap: 6px; }
+.kanban-cartao:hover { border-color: var(--texto-3); }
+.kanban-cartao:active { cursor: grabbing; }
+.kanban-projeto { font-size: 11px; color: var(--acento); font-weight: 600; }
+.kanban-cartao-titulo { font-weight: 600; }
+.kanban-descricao {
+  font-size: 12px;
+  color: var(--texto-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.kanban-plano { display: grid; gap: 4px; text-align: left; border: 1px solid var(--borda); background: var(--painel-2); border-radius: 6px; padding: 6px 8px; cursor: pointer; font-size: 12px; }
+.kanban-plano:hover { border-color: var(--acento); }
+.kanban-acoes { display: flex; align-items: center; gap: 6px; }
+.kanban-novo { border: 1px dashed var(--borda); background: none; border-radius: var(--raio); padding: 8px; color: var(--texto-2); cursor: pointer; }
+.kanban-novo:hover { border-color: var(--acento); color: var(--acento); }
+
+.modal-fundo { position: fixed; inset: 0; background: rgb(0 0 0 / 45%); display: grid; place-items: center; z-index: 50; padding: 24px; }
+.modal { width: min(760px, 100%); max-height: 90vh; overflow: auto; padding: 18px 20px; }
+.kanban { grid-template-columns: repeat(5, minmax(170px, 1fr)); }
+.kanban-coluna, .kanban-cartao, .kanban-plano { min-width: 0; }
+.kanban-plano .espaco { min-width: 0; }
+@media (max-width: 1280px) { .metricas { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.kanban-plano > * { min-width: 0; }
+
+/* ---------- execuções gravadas ---------- */
+
+.lista-execucoes { display: grid; gap: 8px; }
+.linha-execucao { display: flex; align-items: center; gap: 16px; padding: 12px 14px; cursor: pointer; }
+.linha-execucao:hover { border-color: var(--acento); }
+.linha-execucao-principal { flex: 1; min-width: 0; }
+.linha-execucao .titulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linha-execucao .prompt { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.linha-execucao-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; flex: none; }

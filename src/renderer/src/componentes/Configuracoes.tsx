@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Configuracao, Tema } from '@shared/tipos'
 
-export function Configuracoes() {
+export function Configuracoes({ aoVerTutorial }: { aoVerTutorial: () => void }) {
   const [c, setC] = useState<Configuracao | null>(null)
   const [salvo, setSalvo] = useState(false)
 
@@ -18,6 +18,16 @@ export function Configuracoes() {
 
   return (
     <div className="formulario">
+      <div className="campo">
+        <label>Tutorial</label>
+        <div className="linha">
+          <button className="botao" onClick={aoVerTutorial}>
+            Ver tutorial
+          </button>
+          <span className="ajuda">Primeiros passos e como usar o app: execuções, planos, Dashboard e Git.</span>
+        </div>
+      </div>
+
       <div className="campo">
         <label htmlFor="plugin">Pasta do plugin orch (opcional)</label>
         <div className="linha">
@@ -68,6 +78,24 @@ export function Configuracoes() {
           placeholder="Vazio = o padrão das suas configurações do Claude Code"
           onChange={(e) => mudar({ modeloPadrao: e.target.value })}
         />
+      </div>
+
+      <div className="campo">
+        <label className="linha" style={{ fontWeight: 600 }}>
+          <input
+            type="checkbox"
+            checked={c.notificacoes}
+            onChange={async (e) => {
+              const atual = await window.orch.config.ler()
+              setC(await window.orch.config.salvar({ ...atual, notificacoes: e.target.checked }))
+            }}
+          />
+          Notificar quando uma execução esperar aprovação ou resposta
+        </label>
+        <span className="ajuda">
+          Notificação do Windows e ícone piscando na barra de tarefas, só quando o app não está em foco. Clicar na
+          notificação abre a execução.
+        </span>
       </div>
 
       <div className="campo">

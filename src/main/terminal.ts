@@ -15,7 +15,9 @@ export function linhaDeComando(nova: NovaSessao, cfg: Configuracao): string {
   const modelo = nova.modelo || cfg.modeloPadrao
   if (modelo) partes.push('--model', modelo)
   if (cfg.pluginLocal) partes.push('--plugin-dir', cfg.pluginLocal)
-  if (nova.modoPermissao !== 'default') partes.push('--permission-mode', nova.modoPermissao)
+  // No CLI interativo, perguntas e aprovação de plano aparecem no próprio terminal mesmo com bypass.
+  if (nova.modoPermissao === 'livre') partes.push('--dangerously-skip-permissions')
+  else if (nova.modoPermissao !== 'default') partes.push('--permission-mode', nova.modoPermissao)
   partes.push(nova.prompt)
   return partes.map(arg).join(' ')
 }

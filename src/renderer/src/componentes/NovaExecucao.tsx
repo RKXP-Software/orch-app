@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { infoModo, MODOS } from '@shared/permissoes'
 import type { ModoPermissao, NovaSessao } from '@shared/tipos'
-import { SeletorModelo, useModeloInicial } from './SeletorModelo'
+import { CartoesModelo, useModeloInicial } from './SeletorModelo'
 
 interface Acao {
   id: string
@@ -60,13 +61,6 @@ const ACOES: Acao[] = [
   }
 ]
 
-const MODOS: { id: ModoPermissao; nome: string; ajuda: string }[] = [
-  { id: 'default', nome: 'Perguntar', ajuda: 'Cada ação que precisa de permissão aparece para você aprovar.' },
-  { id: 'acceptEdits', nome: 'Aceitar edições', ajuda: 'Edições de arquivo são aprovadas sozinhas; comandos ainda perguntam.' },
-  { id: 'auto', nome: 'Automático', ajuda: 'Um classificador aprova ou nega; o que ele não decidir pergunta a você.' },
-  { id: 'plan', nome: 'Somente leitura', ajuda: 'Modo plano: nada é alterado.' }
-]
-
 export function NovaExecucao({
   projeto,
   aoIniciar
@@ -122,8 +116,8 @@ export function NovaExecucao({
       </div>
 
       <div className="campo">
-        <label htmlFor="modelo">Modelo</label>
-        <SeletorModelo id="modelo" valor={modelo} aoMudar={setModelo} />
+        <label>Modelo do Claude</label>
+        <CartoesModelo valor={modelo} aoMudar={setModelo} />
       </div>
 
       <div className="campo">
@@ -135,7 +129,7 @@ export function NovaExecucao({
             </option>
           ))}
         </select>
-        <span className="ajuda">{MODOS.find((m) => m.id === modo)!.ajuda}</span>
+        <span className="ajuda">{infoModo(modo).ajuda} Dá para trocar depois, durante a execução.</span>
       </div>
 
       <div className="campo">

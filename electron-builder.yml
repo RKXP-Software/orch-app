@@ -1,7 +1,7 @@
 appId: br.com.rkxp.orch
 productName: Orch
 directories:
-  output: dist
+  output: release/${version}
   buildResources: build
 files:
   - out/**
@@ -10,6 +10,7 @@ files:
 asarUnpack:
   - node_modules/@anthropic-ai/**
 win:
+  icon: build/icon.png
   target:
     - target: nsis
       arch: [x64]

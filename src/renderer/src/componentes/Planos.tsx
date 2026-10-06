@@ -121,7 +121,7 @@ export function DetalhePlano({
           )}
           {podeExecutar && (
             <>
-              <SeletorModelo valor={modelo} aoMudar={setModelo} compacto />
+              <SeletorModelo valor={modelo} aoMudar={setModelo} />
               <button className="botao" onClick={() => aoExecutar(plano, modelo, 'terminal')} title="Executar no CLI do Claude">
                 No CLI
               </button>

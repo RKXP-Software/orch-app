@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { InfoProjeto, NovaSessao, Plano, Projeto, Sessao, StatusLogin, Tema } from '@shared/tipos'
+import icone from './assets/icone.svg'
+import { Alteracoes } from './componentes/Alteracoes'
 import { Configuracoes } from './componentes/Configuracoes'
+import { Dashboard } from './componentes/Dashboard'
+import { Execucoes } from './componentes/Execucoes'
+import { Git } from './componentes/Git'
 import { Inicio } from './componentes/Inicio'
 import { NovaExecucao } from './componentes/NovaExecucao'
 import { DetalhePlano, ListaPlanos } from './componentes/Planos'
 import { TelaSessao } from './componentes/Sessao'
 import { Selo } from './componentes/Selo'
+import { nomeModelo } from '@shared/modelos'
 import { nomePasta, ROTULO_SESSAO } from './util'
+
+type Aba = 'planos' | 'execucoes' | 'alteracoes' | 'git' | 'nova'
 
 type Vista =
   | { tipo: 'inicio' }
-  | { tipo: 'projeto'; caminho: string; aba: 'planos' | 'nova'; plano?: string }
+  | { tipo: 'projeto'; caminho: string; aba: Aba; plano?: string }
   | { tipo: 'sessao'; id: string }
   | { tipo: 'config' }
+  | { tipo: 'dashboard' }
+  | { tipo: 'execucao'; projeto: string; arquivo: string }
 
 export function App() {
   const [projetos, setProjetos] = useState<Projeto[]>([])
@@ -21,6 +31,14 @@ export function App() {
   const [sessoes, setSessoes] = useState<Record<string, Sessao>>({})
   const [vista, setVista] = useState<Vista>({ tipo: 'inicio' })
   const [login, setLogin] = useState<StatusLogin | null>(null)
+  /** Execução gravada aberta do arquivo (sem processo vivo). */
+  const [gravada, setGravada] = useState<Sessao | null>(null)
+
+  useEffect(() => {
+    if (vista.tipo !== 'execucao') return
+    setGravada(null)
+    void window.orch.execucoes.ler(vista.projeto, vista.arquivo).then(setGravada)
+  }, [vista])
   const [tema, setTema] = useState<Tema>('sistema')
 
   useEffect(() => {
@@ -44,13 +62,19 @@ export function App() {
   }, [verificarLogin])
 
   useEffect(() => {
-    void window.orch.projetos.listar().then(setProjetos)
+    void window.orch.projetos.listar().then((lista) => {
+      setProjetos(lista)
+      // Com projetos já mapeados, o app abre no Dashboard; o tutorial fica no logo "Orch".
+      if (lista.length > 0) setVista((v) => (v.tipo === 'inicio' ? { tipo: 'dashboard' } : v))
+    })
     void window.orch.sessoes.listar().then((l) => setSessoes(Object.fromEntries(l.map((s) => [s.id, s]))))
     const a = window.orch.planos.aoMudar((projeto, lista) => setPlanos((p) => ({ ...p, [projeto]: lista })))
     const b = window.orch.sessoes.aoMudar((s) => setSessoes((atual) => ({ ...atual, [s.id]: { ...s } })))
+    const c = window.orch.sessoes.aoAbrir((id) => setVista({ tipo: 'sessao', id }))
     return () => {
       a()
       b()
+      c()
     }
   }, [])
 
@@ -60,7 +84,7 @@ export function App() {
   }, [])
 
   const abrirProjeto = useCallback(
-    async (caminho: string, aba: 'planos' | 'nova' = 'planos', plano?: string) => {
+    async (caminho: string, aba: Aba = 'planos', plano?: string) => {
       setVista({ tipo: 'projeto', caminho, aba, plano })
       setInfo(await window.orch.projetos.info(caminho))
       await observar(caminho)
@@ -75,17 +99,19 @@ export function App() {
     await abrirProjeto(p.caminho)
   }
 
-  const iniciar = async (nova: NovaSessao, onde: 'app' | 'terminal' = 'app') => {
+  /** Inicia uma execução. Com `ficar`, continua na tela atual (ex.: o quadro). */
+  const iniciar = async (nova: NovaSessao, onde: 'app' | 'terminal' = 'app', ficar = false): Promise<Sessao | null> => {
     if (onde === 'terminal') {
       await window.orch.abrirNoTerminal(nova)
-      setVista({ tipo: 'projeto', caminho: nova.projeto, aba: 'planos' })
+      if (!ficar) setVista({ tipo: 'projeto', caminho: nova.projeto, aba: 'planos' })
       await observar(nova.projeto)
-      return
+      return null
     }
     const s = await window.orch.sessoes.iniciar(nova)
     setSessoes((atual) => ({ ...atual, [s.id]: s }))
-    setVista({ tipo: 'sessao', id: s.id })
+    if (!ficar) setVista({ tipo: 'sessao', id: s.id })
     await observar(nova.projeto)
+    return s
   }
 
   const listaSessoes = Object.values(sessoes).sort((a, b) => b.iniciada.localeCompare(a.iniciada))
@@ -97,10 +123,19 @@ export function App() {
       <aside className="lateral">
         <div className="lateral-topo">
           <button className="marca" onClick={() => setVista({ tipo: 'inicio' })} title="Início e tutorial">
+            <img src={icone} alt="" width={26} height={26} />
             Orch
           </button>
         </div>
         <div className="lateral-rolagem">
+          <button
+            className={`item ${vista.tipo === 'dashboard' ? 'ativo' : ''}`}
+            style={{ marginTop: 4 }}
+            onClick={() => setVista({ tipo: 'dashboard' })}
+          >
+            <span className="nome">Dashboard</span>
+            {listaSessoes.some((s) => s.status === 'aguardando-voce') && <span className="ponto acento" title="Execução aguardando você" />}
+          </button>
           <div className="lateral-secao">
             <span>Projetos</span>
             <button className="botao icone" title="Adicionar projeto" onClick={adicionarProjeto}>
@@ -194,6 +229,76 @@ export function App() {
   )
 
   function renderizar() {
+    if (vista.tipo === 'execucao') {
+      if (!gravada) return <div className="vazio">Lendo a execução…</div>
+      const s = gravada
+      return (
+        <>
+          <header className="cabecalho">
+            <div style={{ minWidth: 0 }}>
+              <h1>{s.titulo}</h1>
+              <div className="caminho mono">
+                {nomePasta(s.projeto)} · .claude/orch/execucoes/{s.arquivo}
+              </div>
+            </div>
+            <div className="abas">
+              <span className="selo acento" title={s.modelo || undefined}>
+                {nomeModelo(s.modelo)}
+              </span>
+              <Selo rotulo={ROTULO_SESSAO[s.status]} />
+            </div>
+          </header>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <TelaSessao
+              sessao={s}
+              planos={planos[s.projeto] ?? []}
+              aoAbrirPlano={(id) => void abrirProjeto(s.projeto, 'planos', id)}
+              aoDescartar={() => void abrirProjeto(s.projeto, 'execucoes')}
+              aoContinuar={async () => {
+                try {
+                  const viva = await window.orch.sessoes.continuar(vista.projeto, vista.arquivo)
+                  setSessoes((atual) => ({ ...atual, [viva.id]: viva }))
+                  setVista({ tipo: 'sessao', id: viva.id })
+                } catch (e) {
+                  window.alert(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
+                }
+              }}
+            />
+          </div>
+        </>
+      )
+    }
+
+    if (vista.tipo === 'dashboard') {
+      return (
+        <>
+          <header className="cabecalho">
+            <div>
+              <h1>Dashboard</h1>
+              <div className="caminho">Demandas de todos os projetos, do rascunho ao plano entregue</div>
+            </div>
+            <div className="abas" style={{ paddingBottom: 10 }}>
+              <button className="botao pequeno" onClick={() => setVista({ tipo: 'inicio' })}>
+                Tutorial
+              </button>
+            </div>
+          </header>
+          <div className="conteudo">
+            <Dashboard
+              projetos={projetos}
+              planos={planos}
+              sessoes={listaSessoes}
+              observar={observar}
+              aoIniciar={(n) => iniciar(n, 'app', true)}
+              aoAbrirPlano={(p, id) => void abrirProjeto(p, 'planos', id)}
+              aoAbrirSessao={(id) => setVista({ tipo: 'sessao', id })}
+              aoAdicionarProjeto={() => void adicionarProjeto()}
+            />
+          </div>
+        </>
+      )
+    }
+
     if (vista.tipo === 'config') {
       return (
         <>
@@ -204,7 +309,7 @@ export function App() {
             </div>
           </header>
           <div className="conteudo">
-            <Configuracoes />
+            <Configuracoes aoVerTutorial={() => setVista({ tipo: 'inicio' })} />
           </div>
         </>
       )
@@ -221,6 +326,9 @@ export function App() {
               <div className="caminho mono">{s.prompt}</div>
             </div>
             <div className="abas">
+              <span className="selo acento" title={s.modelo || undefined}>
+                {nomeModelo(s.modelo)}
+              </span>
               <Selo rotulo={ROTULO_SESSAO[s.status]} />
             </div>
           </header>
@@ -232,7 +340,7 @@ export function App() {
               aoDescartar={async () => {
                 await window.orch.sessoes.descartar(s.id)
                 setSessoes(({ [s.id]: _, ...resto }) => resto)
-                void abrirProjeto(s.projeto)
+                void abrirProjeto(s.projeto, 'execucoes')
               }}
             />
           </div>
@@ -261,16 +369,46 @@ export function App() {
               >
                 Planos ({lista.length})
               </button>
+              <button
+                className={`aba ${vista.aba === 'execucoes' ? 'ativa' : ''}`}
+                onClick={() => setVista({ ...vista, aba: 'execucoes', plano: undefined })}
+              >
+                Execuções
+              </button>
+              <button
+                className={`aba ${vista.aba === 'alteracoes' ? 'ativa' : ''}`}
+                onClick={() => setVista({ ...vista, aba: 'alteracoes' })}
+              >
+                Alterações
+              </button>
+              <button className={`aba ${vista.aba === 'git' ? 'ativa' : ''}`} onClick={() => setVista({ ...vista, aba: 'git' })}>
+                Git
+              </button>
               <button className={`aba ${vista.aba === 'nova' ? 'ativa' : ''}`} onClick={() => setVista({ ...vista, aba: 'nova' })}>
                 Nova execução
               </button>
             </div>
           </header>
-          <div className="conteudo">
+          <div className={`conteudo ${vista.aba === 'alteracoes' ? 'sem-rolagem' : ''}`}>
             {info?.caminho === vista.caminho && !info.existe && (
               <div className="aviso">Esta pasta não existe mais. Remova o projeto ou escolha outra pasta.</div>
             )}
-            {vista.aba === 'nova' ? (
+            {vista.aba === 'execucoes' ? (
+              <Execucoes
+                projeto={vista.caminho}
+                versao={listaSessoes.map((s) => `${s.id}:${s.status}`).join('|')}
+                aoAbrir={(e) =>
+                  e.idAoVivo
+                    ? setVista({ tipo: 'sessao', id: e.idAoVivo })
+                    : setVista({ tipo: 'execucao', projeto: vista.caminho, arquivo: e.arquivo })
+                }
+                aoNova={() => setVista({ ...vista, aba: 'nova' })}
+              />
+            ) : vista.aba === 'alteracoes' ? (
+              <Alteracoes projeto={vista.caminho} aoIrParaGit={() => setVista({ ...vista, aba: 'git' })} />
+            ) : vista.aba === 'git' ? (
+              <Git projeto={vista.caminho} aoVerAlteracoes={() => setVista({ ...vista, aba: 'alteracoes' })} />
+            ) : vista.aba === 'nova' ? (
               <NovaExecucao projeto={vista.caminho} aoIniciar={(n, onde) => void iniciar(n, onde)} />
             ) : plano ? (
               <DetalhePlano

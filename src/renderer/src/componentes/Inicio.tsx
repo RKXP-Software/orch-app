@@ -136,6 +136,19 @@ export function Inicio({
         <h2 className="inicio-secao">Como usar</h2>
         <div className="guia">
           <div className="cartao guia-item">
+            <h3>0. Organize no Dashboard</h3>
+            <p>
+              No <strong>Dashboard</strong>, cada cartão é uma demanda descrita com calma (objetivo, contexto, quando
+              está pronta). Quando ela estiver madura, <strong>Planejar…</strong> manda o cartão para o orquestrador, e o
+              cartão anda sozinho pelas colunas conforme o plano avança.
+            </p>
+            <p>
+              Nos projetos, as abas <strong>Alterações</strong> e <strong>Git</strong> mostram o que o Claude mudou e
+              permitem fazer commit, pull, push e trocar de branch.
+            </p>
+          </div>
+
+          <div className="cartao guia-item">
             <h3>1. Descreva a demanda</h3>
             <p>
               No projeto, abra <strong>Nova execução</strong> e escolha a ação:
@@ -177,6 +190,11 @@ export function Inicio({
               cartão na execução e o status vira <span className="selo acento">Aguardando você</span>.
             </p>
             <p>
+              Cansou de aprovar? Troque o modo em <strong>Permissões</strong>, logo acima da caixa de mensagem, a
+              qualquer momento. Em <strong>Sem confirmações</strong> você só responde perguntas de planejamento e a
+              aprovação de planos.
+            </p>
+            <p>
               Se o orquestrador pedir confirmação antes de executar um plano grande, responda na caixa de mensagem
               (ex.: "pode executar").
             </p>
@@ -190,6 +208,14 @@ export function Inicio({
             </p>
             <p>
               Plano parado no meio? Abra-o e use <strong>Retomar</strong>: as tarefas já concluídas são mantidas.
+            </p>
+            <p>
+              Toda execução fica gravada no projeto. Na aba <strong>Execuções</strong> você reabre qualquer uma e usa{' '}
+              <strong>Continuar conversa</strong> para retomar de onde parou.
+            </p>
+            <p>
+              Na lateral da execução, <strong>Contexto</strong> mostra quanto da janela do modelo já está ocupado e
+              com o quê (instruções, ferramentas, memória, mensagens).
             </p>
           </div>
         </div>
@@ -218,7 +244,8 @@ export function Inicio({
 
       <p className="muted inicio-rodape">
         Dicas: Ctrl+Enter inicia a execução no formulário · o tema (claro/escuro) fica no rodapé da barra lateral ·
-        clique em <strong>Orch</strong>, no topo da barra lateral, para voltar a esta página.
+        com projetos adicionados, o app abre no <strong>Dashboard</strong>; clique em <strong>Orch</strong>, no topo da
+        barra lateral, para voltar a este tutorial.
       </p>
     </div>
   )

@@ -1,5 +1,8 @@
 // Tipos compartilhados entre o processo principal, o preload e a interface.
 
+import type { Branch, Commit, LinhaDiff, ResultadoGit, StatusGit } from './git'
+import type { Quadro } from './quadro'
+
 // ---------- Planos (contrato com o plugin orch: schema orch.plano/1) ----------
 
 export type StatusPlano = 'planejado' | 'em-execucao' | 'concluido' | 'parcial' | 'cancelado'
@@ -71,11 +74,13 @@ export interface Configuracao {
   executavelClaude: string
   modeloPadrao: string
   tema: Tema
+  /** Notificação do Windows quando uma execução espera aprovação ou resposta. */
+  notificacoes: boolean
 }
 
 // ---------- Sessões (execuções do Claude Code via Agent SDK) ----------
 
-export type ModoPermissao = 'default' | 'acceptEdits' | 'auto' | 'plan'
+export type ModoPermissao = 'default' | 'acceptEdits' | 'auto' | 'livre' | 'plan'
 
 export type StatusSessao =
   | 'iniciando'
@@ -114,7 +119,16 @@ export type EntradaLog =
   | { tipo: 'texto'; quando: string; texto: string; subagente: string | null }
   | { tipo: 'ferramenta'; quando: string; nome: string; resumo: string; subagente: string | null }
   | { tipo: 'saida'; quando: string; texto: string; erro: boolean; subagente: string | null }
-  | { tipo: 'subagente'; quando: string; fase: 'inicio' | 'fim'; descricao: string; agente: string | null; status?: string }
+  | {
+      tipo: 'subagente'
+      quando: string
+      fase: 'inicio' | 'fim'
+      /** Liga o início ao fim do mesmo subagente. */
+      id: string | null
+      descricao: string
+      agente: string | null
+      status?: string
+    }
   | { tipo: 'sistema'; quando: string; texto: string }
   | { tipo: 'erro'; quando: string; texto: string }
   | { tipo: 'resultado'; quando: string; texto: string; sucesso: boolean; custoUsd: number; duracaoMs: number }
@@ -146,8 +160,44 @@ export type RespostaPendencia =
   | { tipo: 'permissao'; decisao: 'permitir' | 'permitir-sempre' | 'negar'; mensagem?: string }
   | { tipo: 'pergunta'; respostas: Record<string, string> }
 
+export interface CategoriaContexto {
+  nome: string
+  tokens: number
+  /** used = ocupa a janela; free = livre; buffer = reserva para compactação; deferred = fora da janela. */
+  tipo: 'used' | 'free' | 'buffer' | 'deferred'
+}
+
+export interface ContextoSessao {
+  usados: number
+  maximo: number
+  pct: number
+  categorias: CategoriaContexto[]
+  memoria: { caminho: string; tokens: number }[]
+  /** Quando veio do detalhamento do Claude Code (fim de turno) ou foi estimado pelo uso de tokens. */
+  origem: 'detalhado' | 'estimado'
+  atualizado: string
+}
+
+export interface ResumoExecucao {
+  arquivo: string
+  titulo: string
+  prompt: string
+  iniciada: string
+  status: StatusSessao
+  modelo: string
+  custoUsd: number
+  /** Mensagens enviadas pelo usuário. */
+  mensagens: number
+  /** Tem o id da conversa do Claude, então dá para continuar. */
+  podeContinuar: boolean
+  /** Se a execução está aberta agora, o id dela no app. */
+  idAoVivo: string | null
+}
+
 export interface Sessao {
   id: string
+  /** Nome do arquivo em .claude/orch/execucoes/ onde a execução é gravada. */
+  arquivo: string | null
   titulo: string
   projeto: string
   prompt: string
@@ -159,6 +209,7 @@ export interface Sessao {
   plugins: { nome: string; versao: string | null }[]
   orchCarregado: boolean | null
   custoUsd: number
+  contexto: ContextoSessao | null
   log: EntradaLog[]
   pendencias: Pendencia[]
 }
@@ -185,13 +236,45 @@ export interface OrchApi {
     interromper(id: string): Promise<void>
     encerrar(id: string): Promise<void>
     descartar(id: string): Promise<void>
+    mudarModo(id: string, modo: ModoPermissao): Promise<void>
+    /** Reabre uma execução gravada e retoma a mesma conversa do Claude. */
+    continuar(projeto: string, arquivo: string): Promise<Sessao>
+    atualizarContexto(id: string): Promise<void>
     aoMudar(cb: (sessao: Sessao) => void): () => void
+    /** Pedido para abrir uma execução (ex.: clique na notificação). */
+    aoAbrir(cb: (id: string) => void): () => void
   }
   config: {
     ler(): Promise<Configuracao>
     salvar(c: Configuracao): Promise<Configuracao>
     escolherPasta(): Promise<string | null>
     definirTema(t: Tema): Promise<Configuracao>
+  }
+  execucoes: {
+    listar(projeto: string): Promise<ResumoExecucao[]>
+    ler(projeto: string, arquivo: string): Promise<Sessao | null>
+    excluir(projeto: string, arquivo: string): Promise<void>
+  }
+  quadro: {
+    ler(projeto: string): Promise<Quadro>
+    salvar(projeto: string, quadro: Quadro): Promise<Quadro>
+  }
+  git: {
+    status(projeto: string): Promise<StatusGit>
+    diff(projeto: string, caminho: string, preparado: boolean): Promise<LinhaDiff[]>
+    preparar(projeto: string, caminhos: string[]): Promise<ResultadoGit>
+    tirarDaPreparacao(projeto: string, caminhos: string[]): Promise<ResultadoGit>
+    descartar(projeto: string, caminhos: string[]): Promise<ResultadoGit>
+    commit(projeto: string, mensagem: string, todos: boolean): Promise<ResultadoGit>
+    buscar(projeto: string): Promise<ResultadoGit>
+    pull(projeto: string): Promise<ResultadoGit>
+    push(projeto: string): Promise<ResultadoGit>
+    branches(projeto: string): Promise<Branch[]>
+    trocarBranch(projeto: string, nome: string, remota: boolean): Promise<ResultadoGit>
+    criarBranch(projeto: string, nome: string, trocar: boolean): Promise<ResultadoGit>
+    apagarBranch(projeto: string, nome: string): Promise<ResultadoGit>
+    log(projeto: string): Promise<Commit[]>
+    iniciar(projeto: string): Promise<ResultadoGit>
   }
   modelos(): Promise<Modelo[]>
   login: {

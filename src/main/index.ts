@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Configuracao, NovaSessao, RespostaPendencia, Tema } from '@shared/tipos'
+import type { Configuracao, ModoPermissao, NovaSessao, RespostaPendencia, Tema } from '@shared/tipos'
 import {
   infoProjeto,
   lerConfig,
@@ -11,6 +12,11 @@ import {
 } from './armazenamento'
 import { ObservadorPlanos } from './planos'
 import { GerenciadorSessoes, listarModelos } from './sessoes'
+import * as git from './git'
+import { notificarPendencia } from './notificacoes'
+import { lerQuadroDoProjeto, salvarQuadro } from './quadro'
+import { excluirExecucao, lerExecucao, listarExecucoes } from './execucoes'
+import type { Quadro } from '@shared/quadro'
 import { abrirLogin, abrirNoTerminal, statusLogin } from './terminal'
 
 let janela: BrowserWindow | null = null
@@ -28,7 +34,13 @@ const enviar = (canal: string, ...args: unknown[]) => {
 }
 
 const planos = new ObservadorPlanos((projeto, lista) => enviar('planos:mudou', projeto, lista))
-const sessoes = new GerenciadorSessoes((s) => enviar('sessoes:mudou', s), lerConfig)
+const sessoes = new GerenciadorSessoes(
+  (s) => enviar('sessoes:mudou', s),
+  lerConfig,
+  (s, p) => {
+    if (lerConfig().notificacoes) notificarPendencia(janela, s, p, (id) => enviar('sessoes:abrir', id))
+  }
+)
 
 function criarJanela(): void {
   janela = new BrowserWindow({
@@ -39,6 +51,8 @@ function criarJanela(): void {
     title: 'Orch',
     backgroundColor: nativeTheme.shouldUseDarkColors ? FUNDO.escuro : FUNDO.claro,
     autoHideMenuBar: true,
+    // No app instalado o ícone vem do .exe; em desenvolvimento, do arquivo.
+    ...(existsSync(join(app.getAppPath(), 'build', 'icon.png')) ? { icon: join(app.getAppPath(), 'build', 'icon.png') } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -46,6 +60,8 @@ function criarJanela(): void {
       sandbox: true
     }
   })
+
+  janela.on('focus', () => janela?.flashFrame(false))
 
   // Links externos abrem no navegador, nunca dentro do app.
   janela.webContents.setWindowOpenHandler(({ url }) => {
@@ -87,6 +103,8 @@ function registrarIpc(): void {
   ipcMain.handle('sessoes:interromper', (_e, id: string) => sessoes.interromper(id))
   ipcMain.handle('sessoes:encerrar', (_e, id: string) => sessoes.encerrar(id))
   ipcMain.handle('sessoes:descartar', (_e, id: string) => sessoes.descartar(id))
+  ipcMain.handle('sessoes:mudarModo', (_e, id: string, modo: ModoPermissao) => sessoes.mudarModo(id, modo))
+  ipcMain.handle('sessoes:contexto', (_e, id: string) => sessoes.atualizarContexto(id, 'full'))
 
   ipcMain.handle('config:ler', () => lerConfig())
   ipcMain.handle('config:salvar', (_e, c: Configuracao) => {
@@ -104,6 +122,28 @@ function registrarIpc(): void {
     return r.canceled ? null : (r.filePaths[0] ?? null)
   })
 
+  ipcMain.handle('execucoes:listar', (_e, p: string) => listarExecucoes(p, sessoes.listar()))
+  ipcMain.handle('execucoes:ler', (_e, p: string, a: string) => lerExecucao(p, a))
+  ipcMain.handle('execucoes:excluir', (_e, p: string, a: string) => excluirExecucao(p, a))
+  ipcMain.handle('sessoes:continuar', (_e, p: string, a: string) => sessoes.continuar(p, a))
+  ipcMain.handle('quadro:ler', (_e, p: string) => lerQuadroDoProjeto(p))
+  ipcMain.handle('quadro:salvar', (_e, p: string, q: Quadro) => salvarQuadro(p, q))
+  ipcMain.handle('git:status', (_e, p: string) => git.status(p))
+  ipcMain.handle('git:diff', (_e, p: string, c: string, prep: boolean) => git.diff(p, c, prep))
+  ipcMain.handle('git:preparar', (_e, p: string, cs: string[]) => git.preparar(p, cs))
+  ipcMain.handle('git:tirarDaPreparacao', (_e, p: string, cs: string[]) => git.tirarDaPreparacao(p, cs))
+  ipcMain.handle('git:descartar', (_e, p: string, cs: string[]) => git.descartar(p, cs))
+  ipcMain.handle('git:commit', (_e, p: string, m: string, todos: boolean) => git.commit(p, m, todos))
+  ipcMain.handle('git:buscar', (_e, p: string) => git.buscar(p))
+  ipcMain.handle('git:pull', (_e, p: string) => git.pull(p))
+  ipcMain.handle('git:push', (_e, p: string) => git.push(p))
+  ipcMain.handle('git:branches', (_e, p: string) => git.branches(p))
+  ipcMain.handle('git:trocarBranch', (_e, p: string, n: string, r: boolean) => git.trocarBranch(p, n, r))
+  ipcMain.handle('git:criarBranch', (_e, p: string, n: string, t: boolean) => git.criarBranch(p, n, t))
+  ipcMain.handle('git:apagarBranch', (_e, p: string, n: string) => git.apagarBranch(p, n))
+  ipcMain.handle('git:log', (_e, p: string) => git.log(p))
+  ipcMain.handle('git:iniciar', (_e, p: string) => git.iniciarRepo(p))
+
   ipcMain.handle('modelos', () => listarModelos(lerConfig()))
   ipcMain.handle('login:status', () => statusLogin(lerConfig()))
   ipcMain.handle('login:abrir', () => abrirLogin(lerConfig()))
@@ -114,6 +154,9 @@ function registrarIpc(): void {
     if (erro) throw new Error(erro)
   })
 }
+
+// Sem isso, as notificações do Windows não aparecem com o nome do app.
+app.setAppUserModelId('br.com.rkxp.orch')
 
 app.whenReady().then(() => {
   aplicarTema(lerConfig().tema)

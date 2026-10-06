@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { infoModo, MODOS } from '@shared/permissoes'
+import { tarefasAoVivo } from '@shared/ao-vivo'
+import { nomeModelo } from '@shared/modelos'
 import { progresso } from '@shared/plano'
-import type { EntradaLog, Pendencia, Plano, Sessao } from '@shared/tipos'
-import { duracao, hora, nomePasta, ROTULO_PLANO, ROTULO_SESSAO, ROTULO_TAREFA, usd } from '../util'
+import type { ContextoSessao, EntradaLog, ModoPermissao, Pendencia, Plano, Sessao } from '@shared/tipos'
+import { dataHora, duracao, hora, nomePasta, ROTULO_PLANO, ROTULO_SESSAO, ROTULO_TAREFA, tokens, usd } from '../util'
 import { Progresso, Selo } from './Selo'
 
 const LINHAS_SAIDA = 12
@@ -134,27 +137,57 @@ function Entrada({ e }: { e: EntradaLog }) {
   }
 }
 
-function CartaoPendencia({ p, aoResponder }: { p: Pendencia; aoResponder: (r: Parameters<typeof window.orch.sessoes.responder>[2]) => void }) {
+function CartaoPendencia({
+  p,
+  aoResponder,
+  aoLiberarTudo
+}: {
+  p: Pendencia
+  aoResponder: (r: Parameters<typeof window.orch.sessoes.responder>[2]) => void
+  aoLiberarTudo: () => void
+}) {
   const [escolhas, setEscolhas] = useState<Record<string, string[]>>({})
   const [outros, setOutros] = useState<Record<string, string>>({})
 
   if (p.tipo === 'permissao') {
+    const ehPlano = p.ferramenta === 'ExitPlanMode'
     return (
       <div className="cartao pendencia">
         <strong>{p.titulo}</strong>
-        <div className="detalhe">{p.detalhe}</div>
-        <div className="linha">
+        <div className={`detalhe ${ehPlano ? 'plano-proposto' : ''}`}>{p.detalhe}</div>
+        <div className="linha" style={{ flexWrap: 'wrap' }}>
           <button className="botao primario" onClick={() => aoResponder({ tipo: 'permissao', decisao: 'permitir' })}>
-            Permitir
+            {ehPlano ? 'Aprovar plano' : 'Permitir'}
           </button>
           {p.podeLembrar && (
             <button className="botao" onClick={() => aoResponder({ tipo: 'permissao', decisao: 'permitir-sempre' })}>
               Permitir sempre
             </button>
           )}
-          <button className="botao perigo" onClick={() => aoResponder({ tipo: 'permissao', decisao: 'negar' })}>
-            Negar
+          <button
+            className="botao perigo"
+            onClick={() =>
+              aoResponder({
+                tipo: 'permissao',
+                decisao: 'negar',
+                ...(ehPlano ? { mensagem: 'O usuário quer continuar planejando antes de executar.' } : {})
+              })
+            }
+          >
+            {ehPlano ? 'Continuar planejando' : 'Negar'}
           </button>
+          {!ehPlano && (
+            <>
+              <span className="espaco" />
+              <button
+                className="botao pequeno"
+                onClick={aoLiberarTudo}
+                title="Muda esta execução para Sem confirmações: aprova este pedido e os próximos. Perguntas de planejamento continuam chegando."
+              >
+                Aprovar tudo daqui em diante
+              </button>
+            </>
+          )}
         </div>
       </div>
     )
@@ -221,7 +254,7 @@ function CartaoPendencia({ p, aoResponder }: { p: Pendencia; aoResponder: (r: Pa
   )
 }
 
-function MiniPlano({ plano, aoAbrir }: { plano: Plano; aoAbrir: () => void }) {
+function MiniPlano({ plano, aoVivo, aoAbrir }: { plano: Plano; aoVivo: Map<string, string>; aoAbrir: () => void }) {
   const { feitas, total, pct } = progresso(plano)
   return (
     <button className="cartao mini-plano" style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }} onClick={aoAbrir}>
@@ -233,14 +266,95 @@ function MiniPlano({ plano, aoAbrir }: { plano: Plano; aoAbrir: () => void }) {
       <div className="muted" style={{ fontSize: 11, margin: '4px 0 6px' }}>
         {feitas}/{total} tarefas
       </div>
-      {plano.tarefas.map((t) => (
-        <div className="t" key={t.id}>
-          <span className={`ponto ${ROTULO_TAREFA[t.status][1]}`} />
-          <span className="mono">{t.id}</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.titulo}</span>
-        </div>
-      ))}
+      {plano.tarefas.map((t) => {
+        // Um subagente já está nesta tarefa, mas o arquivo do plano ainda não foi regravado.
+        const agente = plano.status === 'em-execucao' && t.status === 'pendente' ? aoVivo.get(t.id) : undefined
+        const tom = agente ? 'andamento' : ROTULO_TAREFA[t.status][1]
+        return (
+          <div className="t" key={t.id} title={agente ? `${agente} trabalhando agora` : ROTULO_TAREFA[t.status][0]}>
+            <span className={`ponto ${tom}`} />
+            <span className="mono">{t.id}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{t.titulo}</span>
+            {(agente || t.status === 'em-andamento') && <span className="ao-vivo">{agente ?? t.executor}</span>}
+          </div>
+        )
+      })}
     </button>
+  )
+}
+
+const COR_CATEGORIA = ['#7c86ff', '#4cc07c', '#f0a53a', '#c79bff', '#5ec4d6', '#f06a62', '#b0b7c3']
+
+function PainelContexto({ sessao }: { sessao: Sessao }) {
+  const [aberto, setAberto] = useState(false)
+  const c: ContextoSessao | null = sessao.contexto
+  const ativa = ['iniciando', 'executando', 'aguardando-voce', 'ociosa'].includes(sessao.status)
+
+  const usadas = c?.categorias.filter((x) => x.tipo === 'used').sort((a, b) => b.tokens - a.tokens) ?? []
+  const tom = !c ? '' : c.pct >= 85 ? 'erro' : c.pct >= 60 ? 'andamento' : 'ok'
+
+  return (
+    <div className="contexto">
+      <div className="linha secao-titulo">
+        <span>Contexto</span>
+        <span className="espaco" />
+        {ativa && (
+          <button
+            className="botao pequeno"
+            onClick={() => void window.orch.sessoes.atualizarContexto(sessao.id)}
+            title="Detalhamento completo, como o /context do CLI"
+          >
+            Detalhar
+          </button>
+        )}
+      </div>
+      {!c ? (
+        <div className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+          Aparece depois da primeira resposta do Claude.
+        </div>
+      ) : (
+        <>
+          <div className={`barra contexto-barra ${tom}`} role="progressbar" aria-valuenow={c.pct} aria-valuemin={0} aria-valuemax={100}>
+            <div style={{ width: `${Math.min(c.pct, 100)}%` }} />
+          </div>
+          <div className="contexto-total">
+            <strong>{tokens(c.usados)}</strong>
+            {c.maximo > 0 && <span className="muted"> / {tokens(c.maximo)} tokens · {c.pct}%</span>}
+          </div>
+          <div className="muted" style={{ fontSize: 11 }}>
+            {c.origem === 'estimado' ? 'estimado pela última resposta' : 'detalhado'} · {dataHora(c.atualizado)}
+          </div>
+          {usadas.length > 0 && (
+            <ul className="contexto-categorias">
+              {usadas.map((x, n) => (
+                <li key={x.nome}>
+                  <span className="quadrado" style={{ background: COR_CATEGORIA[n % COR_CATEGORIA.length] }} />
+                  <span className="nome">{x.nome}</span>
+                  <span className="mono">{tokens(x.tokens)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {c.memoria.length > 0 && (
+            <>
+              <button className="link" style={{ fontSize: 12 }} onClick={() => setAberto(!aberto)}>
+                {aberto ? 'Ocultar' : 'Ver'} arquivos de memória ({c.memoria.length})
+              </button>
+              {aberto && (
+                <ul className="contexto-categorias">
+                  {c.memoria.map((m) => (
+                    <li key={m.caminho} title={m.caminho}>
+                      <span className="nome mono">{nomePasta(m.caminho)}</span>
+                      <span className="mono">{tokens(m.tokens)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 
@@ -248,12 +362,15 @@ export function TelaSessao({
   sessao,
   planos,
   aoAbrirPlano,
-  aoDescartar
+  aoDescartar,
+  aoContinuar
 }: {
   sessao: Sessao
   planos: Plano[]
   aoAbrirPlano: (id: string) => void
   aoDescartar: () => void
+  /** Execução gravada (reaberta do arquivo): retoma a conversa do Claude. */
+  aoContinuar?: () => void
 }) {
   const [texto, setTexto] = useState('')
   const [visao, setVisao] = useState<'conversa' | 'terminal'>('conversa')
@@ -262,6 +379,7 @@ export function TelaSessao({
   const rodando = ['iniciando', 'executando', 'aguardando-voce'].includes(sessao.status)
 
   // Planos tocados desde o início desta sessão, ou ainda em execução.
+  const aoVivo = tarefasAoVivo(sessao.log)
   const inicio = new Date(sessao.iniciada).getTime() - 60_000
   const relevantes = planos.filter(
     (p) => p.status === 'em-execucao' || new Date(p.atualizado ?? p.criado ?? 0).getTime() >= inicio
@@ -318,8 +436,28 @@ export function TelaSessao({
                 key={p.id}
                 p={p}
                 aoResponder={(r) => void window.orch.sessoes.responder(sessao.id, p.id, r)}
+                aoLiberarTudo={() => void window.orch.sessoes.mudarModo(sessao.id, 'livre')}
               />
             ))}
+          </div>
+        )}
+
+        {ativa && (
+          <div className="barra-modo">
+            <label htmlFor="modo-sessao">Permissões</label>
+            <select
+              id="modo-sessao"
+              className="entrada"
+              value={sessao.modoPermissao}
+              onChange={(e) => void window.orch.sessoes.mudarModo(sessao.id, e.target.value as ModoPermissao)}
+            >
+              {MODOS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome}
+                </option>
+              ))}
+            </select>
+            <span className="ajuda">{infoModo(sessao.modoPermissao).ajuda}</span>
           </div>
         )}
 
@@ -353,7 +491,10 @@ export function TelaSessao({
           <div className="muted">
             {nomePasta(sessao.projeto)} · {usd(sessao.custoUsd)}
           </div>
-          <div className="muted mono">{sessao.modelo || 'modelo padrão'}</div>
+          <div className="linha" style={{ fontSize: 13 }} title={sessao.modelo || undefined}>
+            <span className="muted">Modelo</span>
+            <span className="selo acento">{nomeModelo(sessao.modelo)}</span>
+          </div>
           {sessao.orchCarregado === false && <div className="selo erro">orch não carregado</div>}
           <div className="linha" style={{ flexWrap: 'wrap', marginTop: 4 }}>
             {rodando && (
@@ -366,12 +507,21 @@ export function TelaSessao({
                 Encerrar
               </button>
             ) : (
-              <button className="botao pequeno" onClick={aoDescartar}>
-                Fechar
-              </button>
+              <>
+                {aoContinuar && sessao.sessionIdClaude && (
+                  <button className="botao pequeno primario" onClick={aoContinuar} title="Retoma a mesma conversa do Claude, com todo o contexto">
+                    Continuar conversa
+                  </button>
+                )}
+                <button className="botao pequeno" onClick={aoDescartar}>
+                  {aoContinuar ? 'Voltar' : 'Fechar'}
+                </button>
+              </>
             )}
           </div>
         </div>
+
+        <PainelContexto sessao={sessao} />
 
         <div className="secao-titulo">Planos</div>
         {relevantes.length === 0 ? (
@@ -379,7 +529,7 @@ export function TelaSessao({
             Os planos criados ou executados por esta sessão aparecem aqui.
           </div>
         ) : (
-          relevantes.map((p) => <MiniPlano key={p.id} plano={p} aoAbrir={() => aoAbrirPlano(p.id)} />)
+          relevantes.map((p) => <MiniPlano key={p.id} plano={p} aoVivo={aoVivo} aoAbrir={() => aoAbrirPlano(p.id)} />)
         )}
       </aside>
     </div>

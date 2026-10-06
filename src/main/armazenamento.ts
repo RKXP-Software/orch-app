@@ -10,7 +10,7 @@ interface Dados {
   config: Configuracao
 }
 
-const CONFIG_PADRAO: Configuracao = { pluginLocal: '', executavelClaude: '', modeloPadrao: '', tema: 'sistema' }
+const CONFIG_PADRAO: Configuracao = { pluginLocal: '', executavelClaude: '', modeloPadrao: '', tema: 'sistema', notificacoes: true }
 
 const arquivo = () => join(app.getPath('userData'), 'orch-app.json')
 

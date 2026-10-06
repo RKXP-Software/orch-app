@@ -49,4 +49,10 @@ export function duracao(ms: number): string {
 
 export const usd = (v: number) => `US$ ${v.toFixed(2)}`
 
-export const nomePasta = (c: string) => c.split(/[\\/]/).filter(Boolean).pop() ?? c
+export { nomePasta } from '@shared/caminhos'
+
+export function tokens(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
+  return `${(n / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} mi`
+}
