@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { InfoProjeto, NovaSessao, Plano, Projeto, Sessao, StatusLogin, Tema } from '@shared/tipos'
+import type { InfoProjeto, ItemFila, NovaSessao, Plano, Projeto, Sessao, StatusLogin, Tema } from '@shared/tipos'
+import { promptPlano } from '@shared/execucao'
 import icone from './assets/icone.svg'
 import { Alteracoes } from './componentes/Alteracoes'
+import { AtalhoAtualizarPlugin } from './componentes/AtualizarPlugin'
 import { Configuracoes } from './componentes/Configuracoes'
 import { Dashboard } from './componentes/Dashboard'
 import { Execucoes } from './componentes/Execucoes'
 import { Git } from './componentes/Git'
 import { Inicio } from './componentes/Inicio'
 import { NovaExecucao } from './componentes/NovaExecucao'
+import { Paralelo } from './componentes/Paralelo'
 import { DetalhePlano, ListaPlanos } from './componentes/Planos'
 import { TelaSessao } from './componentes/Sessao'
 import { Selo } from './componentes/Selo'
 import { nomeModelo } from '@shared/modelos'
 import { nomePasta, ROTULO_SESSAO } from './util'
 
-type Aba = 'planos' | 'execucoes' | 'alteracoes' | 'git' | 'nova'
+type Aba = 'planos' | 'execucoes' | 'paralelo' | 'alteracoes' | 'git' | 'nova'
+
+const ATIVAS = ['iniciando', 'executando', 'aguardando-voce', 'ociosa']
 
 type Vista =
   | { tipo: 'inicio' }
@@ -31,6 +36,7 @@ export function App() {
   const [sessoes, setSessoes] = useState<Record<string, Sessao>>({})
   const [vista, setVista] = useState<Vista>({ tipo: 'inicio' })
   const [login, setLogin] = useState<StatusLogin | null>(null)
+  const [fila, setFila] = useState<ItemFila[]>([])
   /** Execução gravada aberta do arquivo (sem processo vivo). */
   const [gravada, setGravada] = useState<Sessao | null>(null)
 
@@ -71,10 +77,13 @@ export function App() {
     const a = window.orch.planos.aoMudar((projeto, lista) => setPlanos((p) => ({ ...p, [projeto]: lista })))
     const b = window.orch.sessoes.aoMudar((s) => setSessoes((atual) => ({ ...atual, [s.id]: { ...s } })))
     const c = window.orch.sessoes.aoAbrir((id) => setVista({ tipo: 'sessao', id }))
+    void window.orch.planos.fila().then(setFila)
+    const d = window.orch.planos.aoMudarFila(setFila)
     return () => {
       a()
       b()
       c()
+      d()
     }
   }, [])
 
@@ -200,6 +209,7 @@ export function App() {
               </button>
             ))}
           </div>
+          <AtalhoAtualizarPlugin />
           <button className={`item ${vista.tipo === 'config' ? 'ativo' : ''}`} onClick={() => setVista({ tipo: 'config' })}>
             <span className="nome">Configurações</span>
           </button>
@@ -333,9 +343,13 @@ export function App() {
             </div>
           </header>
           <div style={{ flex: 1, minHeight: 0 }}>
-            <TelaSessao
+              <TelaSessao
               sessao={s}
               planos={planos[s.projeto] ?? []}
+              irmas={listaSessoes
+                .filter((x) => x.projeto === s.projeto && ATIVAS.includes(x.status) && (x.tarefa || x.id === s.id))
+                .sort((a, b) => a.iniciada.localeCompare(b.iniciada))}
+              aoAbrirSessao={(id) => setVista({ tipo: 'sessao', id })}
               aoAbrirPlano={(id) => void abrirProjeto(s.projeto, 'planos', id)}
               aoDescartar={async () => {
                 await window.orch.sessoes.descartar(s.id)
@@ -376,6 +390,12 @@ export function App() {
                 Execuções
               </button>
               <button
+                className={`aba ${vista.aba === 'paralelo' ? 'ativa' : ''}`}
+                onClick={() => setVista({ ...vista, aba: 'paralelo', plano: undefined })}
+              >
+                Paralelo ({listaSessoes.filter((s) => s.projeto === vista.caminho && ATIVAS.includes(s.status)).length})
+              </button>
+              <button
                 className={`aba ${vista.aba === 'alteracoes' ? 'ativa' : ''}`}
                 onClick={() => setVista({ ...vista, aba: 'alteracoes' })}
               >
@@ -389,7 +409,7 @@ export function App() {
               </button>
             </div>
           </header>
-          <div className={`conteudo ${vista.aba === 'alteracoes' ? 'sem-rolagem' : ''}`}>
+          <div className={`conteudo ${vista.aba === 'alteracoes' || vista.aba === 'paralelo' ? 'sem-rolagem' : ''}`}>
             {info?.caminho === vista.caminho && !info.existe && (
               <div className="aviso">Esta pasta não existe mais. Remova o projeto ou escolha outra pasta.</div>
             )}
@@ -404,6 +424,13 @@ export function App() {
                 }
                 aoNova={() => setVista({ ...vista, aba: 'nova' })}
               />
+            ) : vista.aba === 'paralelo' ? (
+              <Paralelo
+                sessoes={listaSessoes.filter((s) => s.projeto === vista.caminho)}
+                planos={lista}
+                aoAbrirSessao={(id) => setVista({ tipo: 'sessao', id })}
+                aoAbrirPlano={(id) => void abrirProjeto(vista.caminho, 'planos', id)}
+              />
             ) : vista.aba === 'alteracoes' ? (
               <Alteracoes projeto={vista.caminho} aoIrParaGit={() => setVista({ ...vista, aba: 'git' })} />
             ) : vista.aba === 'git' ? (
@@ -413,20 +440,33 @@ export function App() {
             ) : plano ? (
               <DetalhePlano
                 plano={plano}
+                projeto={vista.caminho}
                 ocupado={ocupadoNo(vista.caminho)}
+                sessoes={listaSessoes}
+                fila={fila}
                 aoVoltar={() => setVista({ ...vista, plano: undefined })}
-                aoExecutar={(p, modelo, onde) =>
+                aoAbrirSessao={(id) => setVista({ tipo: 'sessao', id })}
+                aoVerParalelo={() => setVista({ ...vista, aba: 'paralelo', plano: undefined })}
+                aoExecutar={async (p, modelo, onde, paralelo, isolamento) => {
+                  if (isolamento === 'branch') {
+                    try {
+                      await window.orch.planos.prepararBranch(vista.caminho, p.id)
+                    } catch (e) {
+                      window.alert(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
+                      return
+                    }
+                  }
                   void iniciar(
                     {
                       projeto: vista.caminho,
-                      prompt: `/orch:orquestrar --executar ${p.id}`,
+                      prompt: promptPlano(p.id, paralelo),
                       titulo: `${p.status === 'planejado' ? 'Executar' : 'Retomar'}: ${p.titulo}`,
                       modoPermissao: 'default',
                       modelo
                     },
                     onde
                   )
-                }
+                }}
               />
             ) : (
               <ListaPlanos

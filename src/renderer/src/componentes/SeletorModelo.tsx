@@ -98,20 +98,28 @@ export function CartoesModelo({ valor, aoMudar }: { valor: string; aoMudar: (m: 
 export function SeletorModelo({
   valor,
   aoMudar,
-  id
+  id,
+  rotulo = 'Modelo',
+  vazio = 'Padrão',
+  titulo = 'Modelo do Claude usado nesta execução'
 }: {
   valor: string
   aoMudar: (m: string) => void
   id?: string
+  /** Texto antes do menu; vazio = só o menu (uso compacto). */
+  rotulo?: string
+  /** Texto da opção sem modelo escolhido. */
+  vazio?: string
+  titulo?: string
 }) {
   const modelos = useModelos()
   const selecionado = modelos?.find((m) => m.valor === valor)
   return (
-    <label className="seletor-modelo" title="Modelo do Claude usado nesta execução">
-      <span>Modelo</span>
+    <label className="seletor-modelo" title={titulo}>
+      {rotulo && <span>{rotulo}</span>}
       <select id={id} className="entrada" value={valor} disabled={!modelos} onChange={(e) => aoMudar(e.target.value)}>
         {!modelos && <option value={valor}>Carregando…</option>}
-        {modelos && <option value="">Padrão</option>}
+        {modelos && <option value="">{vazio}</option>}
         {modelos?.map((m) => {
           const info = INDICADO_PARA[familiaModelo(m.valor) ?? '']
           return (

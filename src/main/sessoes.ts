@@ -181,6 +181,14 @@ export async function listarModelos(cfg: Configuracao): Promise<Modelo[]> {
   }
 }
 
+/** Fim de um turno (ou da sessão) — usado para registrar o resultado das tarefas de plano. */
+export interface FimDeTurno {
+  sucesso: boolean
+  texto: string
+  /** A sessão acabou (erro ou interrompida), não apenas o turno. */
+  encerrada: boolean
+}
+
 export class GerenciadorSessoes {
   private sessoes = new Map<string, Interna>()
   private timers = new Map<string, NodeJS.Timeout>()
@@ -189,7 +197,8 @@ export class GerenciadorSessoes {
   constructor(
     private publicar: (s: Sessao) => void,
     private config: () => Configuracao,
-    private aoPendencia: (s: Sessao, p: Pendencia) => void = () => undefined
+    private aoPendencia: (s: Sessao, p: Pendencia) => void = () => undefined,
+    private aoTerminar: (s: Sessao, fim: FimDeTurno) => void = () => undefined
   ) {}
 
   listar(): Sessao[] {
@@ -207,6 +216,9 @@ export class GerenciadorSessoes {
       prompt: nova.prompt,
       modoPermissao: nova.modoPermissao,
       modelo: nova.modelo,
+      plano: nova.plano ?? null,
+      tarefa: nova.tarefa ?? null,
+      pasta: nova.pasta ?? null,
       status: 'iniciando',
       iniciada,
       sessionIdClaude: null,
@@ -349,7 +361,9 @@ export class GerenciadorSessoes {
   private async rodar(i: Interna): Promise<void> {
     const cfg = this.config()
     const options: Options = {
-      cwd: i.sessao.projeto,
+      cwd: i.sessao.pasta || i.sessao.projeto,
+      // Numa worktree, o plano e o perfil continuam na pasta do projeto.
+      ...(i.sessao.pasta ? { additionalDirectories: [i.sessao.projeto] } : {}),
       abortController: i.abort,
       systemPrompt: { type: 'preset', preset: 'claude_code' },
       settingSources: ['user', 'project', 'local'],
@@ -379,6 +393,14 @@ export class GerenciadorSessoes {
         this.mudarStatus(i, 'erro')
       }
     } finally {
+      if (['erro', 'interrompida'].includes(i.sessao.status)) {
+        const ultimo = [...i.sessao.log].reverse().find((e) => e.tipo === 'erro')
+        this.aoTerminar(i.sessao, {
+          sucesso: false,
+          texto: ultimo && 'texto' in ultimo ? ultimo.texto : i.sessao.status === 'interrompida' ? 'Interrompida.' : 'Erro.',
+          encerrada: true
+        })
+      }
       for (const [pid, resolver] of i.respostas) {
         resolver({ tipo: 'permissao', decisao: 'negar', mensagem: 'Sessão encerrada.' })
         i.respostas.delete(pid)
@@ -513,6 +535,11 @@ export class GerenciadorSessoes {
         }
         // A sessão continua aberta esperando outra mensagem (ex.: confirmar a execução do plano).
         this.mudarStatus(i, 'ociosa')
+        this.aoTerminar(s, {
+          sucesso,
+          texto: m.subtype === 'success' ? m.result : `Execução terminou com erro (${m.subtype}).`,
+          encerrada: false
+        })
         break
       }
     }

@@ -616,3 +616,73 @@ button.metrica.destaque .valor { color: var(--acento); }
 .linha-execucao .titulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .linha-execucao .prompt { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 .linha-execucao-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; flex: none; }
+
+/* ---------- execução manual por ondas ---------- */
+
+.barra-execucao {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  background: var(--painel);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+}
+.onda-acoes { display: grid; gap: 6px; margin-bottom: 8px; padding: 8px; background: var(--painel-2); border-radius: 6px; }
+.onda-acoes .seletor-modelo { width: 100%; }
+.onda-acoes .seletor-modelo select { width: 100%; }
+.aviso-conflito { font-size: 11px; color: var(--andamento); background: var(--andamento-suave); border-radius: 4px; padding: 4px 6px; }
+.acoes-tarefa { flex-wrap: wrap; margin-top: 8px; }
+.acoes-tarefa:empty { display: none; }
+.tarefa .seletor-modelo { width: 100%; }
+.tarefa .seletor-modelo select { width: 100%; }
+
+/* ---------- visão em paralelo ---------- */
+
+.paralelo { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.barra-paralelo { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; }
+.grade-paralela {
+  display: grid;
+  grid-template-columns: repeat(var(--colunas, 1), minmax(0, 1fr));
+  flex: 1;
+  min-height: 0;
+  gap: 1px;
+  background: var(--borda);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  overflow: hidden;
+}
+.coluna-sessao { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fundo); }
+.coluna-topo { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--borda); background: var(--painel); }
+.coluna-topo select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 12px; }
+.coluna-corpo { flex: 1; min-height: 0; }
+
+.sessao.compacto { grid-template-columns: minmax(0, 1fr); }
+.sessao.compacto .sessao-lateral { display: none; }
+.sessao.compacto .sessao-principal { border-right: 0; }
+.sessao.compacto .log { padding: 10px 12px; }
+.sessao.compacto .terminal { padding: 10px 12px; }
+.sessao.compacto .pendencias { padding: 0 10px; }
+.sessao.compacto .compositor { padding: 8px 10px 10px; }
+.sessao.compacto .seletor-visao { padding: 0 10px; }
+.sessao.compacto .barra-modo .ajuda { display: none; }
+
+.paralelas { margin-bottom: 16px; display: grid; gap: 4px; }
+.item-paralela {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  background: var(--fundo);
+  cursor: pointer;
+  font-size: 12px;
+}
+.item-paralela:hover { border-color: var(--acento); }
+.item-paralela.atual { border-color: var(--acento); background: var(--acento-suave); cursor: default; }
+.item-paralela .nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

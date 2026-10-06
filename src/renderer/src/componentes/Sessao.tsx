@@ -363,12 +363,20 @@ export function TelaSessao({
   planos,
   aoAbrirPlano,
   aoDescartar,
-  aoContinuar
+  aoContinuar,
+  compacto = false,
+  irmas = [],
+  aoAbrirSessao
 }: {
   sessao: Sessao
   planos: Plano[]
   aoAbrirPlano: (id: string) => void
   aoDescartar: () => void
+  /** Dentro da grade paralela: só a conversa, sem o painel lateral. */
+  compacto?: boolean
+  /** Tarefas em execução em paralelo no projeto (listadas no painel lateral). */
+  irmas?: Sessao[]
+  aoAbrirSessao?: (id: string) => void
   /** Execução gravada (reaberta do arquivo): retoma a conversa do Claude. */
   aoContinuar?: () => void
 }) {
@@ -396,7 +404,7 @@ export function TelaSessao({
   }
 
   return (
-    <div className="sessao">
+    <div className={`sessao ${compacto ? 'compacto' : ''}`}>
       <div className="sessao-principal">
         <div className="seletor-visao">
           <button className={`aba ${visao === 'conversa' ? 'ativa' : ''}`} onClick={() => setVisao('conversa')}>
@@ -520,6 +528,27 @@ export function TelaSessao({
             )}
           </div>
         </div>
+
+        {irmas.length > 0 && aoAbrirSessao && (
+          <div className="paralelas">
+            <div className="secao-titulo">Tarefas em paralelo</div>
+            {irmas.map((x) => {
+              const [rotulo, tom] = ROTULO_SESSAO[x.status]
+              return (
+                <button
+                  key={x.id}
+                  className={`item-paralela ${x.id === sessao.id ? 'atual' : ''}`}
+                  onClick={() => x.id !== sessao.id && aoAbrirSessao(x.id)}
+                  title={x.titulo}
+                >
+                  <span className={`ponto ${tom}`} title={rotulo} />
+                  <span className="nome">{x.titulo}</span>
+                  <span className="selo acento">{nomeModelo(x.modelo)}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <PainelContexto sessao={sessao} />
 

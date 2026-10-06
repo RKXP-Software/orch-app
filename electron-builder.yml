@@ -18,3 +18,10 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   artifactName: Orch-Setup-${version}.${ext}
+  # Rodar o instalador por cima de uma instalação existente atualiza o app no mesmo lugar
+  # (o NSIS reaproveita a pasta anterior e fecha o app em execução). Projetos, configurações e
+  # execuções gravadas ficam fora da pasta de instalação e não são tocados.
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  shortcutName: Orch
+  language: '1046'

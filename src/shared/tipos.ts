@@ -20,7 +20,17 @@ export interface Tarefa {
   fim: string | null
   tentativas: number
   resultado: string | null
+  /** Modelo com que a tarefa foi executada pelo app (execução manual). */
+  modelo: string | null
+  /** Sessão do app que está executando a tarefa; serve para recuperar tarefas órfãs ao reabrir o app. */
+  sessaoApp: string | null
+  /** Pasta de trabalho da tarefa quando executada numa worktree. */
+  pasta: string | null
+  /** Situação do merge da worktree de volta no projeto. */
+  merge: EstadoMerge | null
 }
+
+export type EstadoMerge = 'pendente' | 'mesclado' | 'conflito'
 
 export interface EventoPlano {
   quando: string
@@ -76,6 +86,40 @@ export interface Configuracao {
   tema: Tema
   /** Notificação do Windows quando uma execução espera aprovação ou resposta. */
   notificacoes: boolean
+  /** Máximo de tarefas em paralelo (1–6), nos modos automático e manual. */
+  maxParalelo: number
+  /** Como um plano é executado por padrão. */
+  modoExecucaoPadrao: ModoExecucao
+  /** Onde as tarefas trabalham: na pasta do projeto, numa branch do plano ou numa worktree por tarefa. */
+  isolamento: Isolamento
+  /** Com worktree: mesclar de volta sozinho ao concluir a tarefa ou só pelo botão. */
+  mergeWorktree: MergeWorktree
+}
+
+export type ModoExecucao = 'automatico' | 'manual'
+export type Isolamento = 'mesma-pasta' | 'branch' | 'worktree'
+export type MergeWorktree = 'manual' | 'automatico'
+
+export const LIMITE_PARALELO = 6
+
+/** Opções de uma execução de plano (padrões vêm da Configuracao). */
+export interface OpcoesExecucao {
+  isolamento: Isolamento
+  mergeWorktree: MergeWorktree
+}
+
+/** Tarefa esperando vaga para executar (fila FIFO no processo principal). */
+export interface ItemFila {
+  projeto: string
+  plano: string
+  tarefa: string
+  modelo: string
+}
+
+export interface PedidoTarefa {
+  tarefa: string
+  /** Vazio = usar o modelo da configuração. */
+  modelo: string
 }
 
 // ---------- Sessões (execuções do Claude Code via Agent SDK) ----------
@@ -99,6 +143,11 @@ export interface NovaSessao {
   modoPermissao: ModoPermissao
   /** Modelo do Claude (alias ou id, ex.: "opus", "claude-sonnet-5-5"). Vazio = padrão das configurações. */
   modelo: string
+  /** Execução de uma tarefa de plano (modo manual): liga a sessão à tarefa. */
+  plano?: string | null
+  tarefa?: string | null
+  /** Pasta onde o Claude trabalha, se não for a do projeto (worktree). */
+  pasta?: string | null
 }
 
 export interface StatusLogin {
@@ -106,6 +155,23 @@ export interface StatusLogin {
   metodo: string | null
   /** Preenchido quando não foi possível consultar o Claude Code. */
   erro: string | null
+}
+
+export interface StatusPlugin {
+  instalado: boolean
+  /** Ex.: "orch@orch-marketplace". */
+  id: string | null
+  versao: string | null
+  /** Configurações aponta uma pasta local do plugin: ela tem prioridade sobre a instalação. */
+  usaPastaLocal: boolean
+  erro: string | null
+}
+
+export interface ResultadoAtualizacaoPlugin {
+  ok: boolean
+  versaoAntes: string | null
+  versaoDepois: string | null
+  mensagem: string
 }
 
 export interface Modelo {
@@ -212,6 +278,9 @@ export interface Sessao {
   contexto: ContextoSessao | null
   log: EntradaLog[]
   pendencias: Pendencia[]
+  plano?: string | null
+  tarefa?: string | null
+  pasta?: string | null
 }
 
 // ---------- API exposta pelo preload ----------
@@ -227,6 +296,15 @@ export interface OrchApi {
     observar(projeto: string): Promise<Plano[]>
     pararDeObservar(projeto: string): Promise<void>
     aoMudar(cb: (projeto: string, planos: Plano[]) => void): () => void
+    /** Execução manual: inicia as tarefas (as que passam do limite entram na fila). */
+    executarTarefas(projeto: string, plano: string, pedidos: PedidoTarefa[], opcoes: OpcoesExecucao): Promise<void>
+    pularTarefa(projeto: string, plano: string, tarefa: string): Promise<void>
+    mesclarTarefa(projeto: string, plano: string, tarefa: string): Promise<void>
+    /** Vai para o branch do plano (criando-o), para o modo automático com isolamento por branch. */
+    prepararBranch(projeto: string, plano: string): Promise<void>
+    fila(): Promise<ItemFila[]>
+    cancelarNaFila(projeto: string, plano: string, tarefa: string): Promise<void>
+    aoMudarFila(cb: (fila: ItemFila[]) => void): () => void
   }
   sessoes: {
     listar(): Promise<Sessao[]>
@@ -275,6 +353,11 @@ export interface OrchApi {
     apagarBranch(projeto: string, nome: string): Promise<ResultadoGit>
     log(projeto: string): Promise<Commit[]>
     iniciar(projeto: string): Promise<ResultadoGit>
+  }
+  plugin: {
+    status(): Promise<StatusPlugin>
+    /** Atualiza o plugin orch instalado no Claude Code (marketplace + plugin). */
+    atualizar(): Promise<ResultadoAtualizacaoPlugin>
   }
   modelos(): Promise<Modelo[]>
   login: {

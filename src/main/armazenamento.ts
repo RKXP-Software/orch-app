@@ -3,6 +3,7 @@
 import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import { normalizarConfigExecucao } from '@shared/execucao'
 import type { Configuracao, InfoProjeto, Projeto } from '@shared/tipos'
 
 interface Dados {
@@ -10,14 +11,29 @@ interface Dados {
   config: Configuracao
 }
 
-const CONFIG_PADRAO: Configuracao = { pluginLocal: '', executavelClaude: '', modeloPadrao: '', tema: 'sistema', notificacoes: true }
+const CONFIG_PADRAO: Configuracao = {
+  pluginLocal: '',
+  executavelClaude: '',
+  modeloPadrao: '',
+  tema: 'sistema',
+  notificacoes: true,
+  maxParalelo: 3,
+  modoExecucaoPadrao: 'automatico',
+  isolamento: 'mesma-pasta',
+  mergeWorktree: 'manual'
+}
+
+const completar = (c: Partial<Configuracao> | undefined): Configuracao => {
+  const mista = { ...CONFIG_PADRAO, ...c }
+  return { ...mista, ...normalizarConfigExecucao(mista) }
+}
 
 const arquivo = () => join(app.getPath('userData'), 'orch-app.json')
 
 function ler(): Dados {
   try {
     const d = JSON.parse(readFileSync(arquivo(), 'utf8')) as Partial<Dados>
-    return { projetos: d.projetos ?? [], config: { ...CONFIG_PADRAO, ...d.config } }
+    return { projetos: d.projetos ?? [], config: completar(d.config) }
   } catch {
     return { projetos: [], config: { ...CONFIG_PADRAO } }
   }
@@ -52,7 +68,7 @@ export function lerConfig(): Configuracao {
 
 export function salvarConfig(c: Configuracao): Configuracao {
   const d = ler()
-  d.config = { ...CONFIG_PADRAO, ...c }
+  d.config = completar(c)
   gravar(d)
   return d.config
 }

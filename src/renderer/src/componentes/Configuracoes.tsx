@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { Configuracao, Tema } from '@shared/tipos'
+import { PainelPlugin } from './AtualizarPlugin'
+import { LIMITE_PARALELO } from '@shared/tipos'
+import type { Configuracao, Isolamento, MergeWorktree, ModoExecucao, Tema } from '@shared/tipos'
 
 export function Configuracoes({ aoVerTutorial }: { aoVerTutorial: () => void }) {
   const [c, setC] = useState<Configuracao | null>(null)
@@ -27,6 +29,8 @@ export function Configuracoes({ aoVerTutorial }: { aoVerTutorial: () => void }) 
           <span className="ajuda">Primeiros passos e como usar o app: execuções, planos, Dashboard e Git.</span>
         </div>
       </div>
+
+      <PainelPlugin />
 
       <div className="campo">
         <label htmlFor="plugin">Pasta do plugin orch (opcional)</label>
@@ -79,6 +83,58 @@ export function Configuracoes({ aoVerTutorial }: { aoVerTutorial: () => void }) 
           onChange={(e) => mudar({ modeloPadrao: e.target.value })}
         />
       </div>
+
+      <div className="campo">
+        <label htmlFor="paralelo">Tarefas em paralelo (máximo)</label>
+        <input
+          id="paralelo"
+          type="number"
+          className="entrada"
+          style={{ width: 90 }}
+          min={1}
+          max={LIMITE_PARALELO}
+          value={c.maxParalelo}
+          onChange={(e) => mudar({ maxParalelo: Math.min(LIMITE_PARALELO, Math.max(1, Number(e.target.value) || 1)) })}
+        />
+        <span className="ajuda">
+          De 1 a {LIMITE_PARALELO}. Vale nos dois modos: no manual, o que passar do limite espera numa fila e começa quando
+          houver vaga; no automático, o limite é repassado ao orquestrador.
+        </span>
+      </div>
+
+      <div className="campo">
+        <label htmlFor="modo-exec">Execução de planos</label>
+        <select
+          id="modo-exec"
+          className="entrada"
+          value={c.modoExecucaoPadrao}
+          onChange={(e) => mudar({ modoExecucaoPadrao: e.target.value as ModoExecucao })}
+        >
+          <option value="automatico">Automático: o orquestrador executa o plano inteiro</option>
+          <option value="manual">Manual por ondas: você escolhe as tarefas e o modelo de cada onda</option>
+        </select>
+        <span className="ajuda">É o modo inicial no detalhe do plano; dá para trocar em cada plano.</span>
+      </div>
+
+      <div className="campo">
+        <label htmlFor="isolamento">Onde as tarefas trabalham</label>
+        <select id="isolamento" className="entrada" value={c.isolamento} onChange={(e) => mudar({ isolamento: e.target.value as Isolamento })}>
+          <option value="mesma-pasta">Na pasta do projeto (tarefas paralelas compartilham os arquivos)</option>
+          <option value="branch">Num branch do plano (orch/&lt;id do plano&gt;)</option>
+          <option value="worktree">Numa worktree por tarefa (só no modo manual)</option>
+        </select>
+      </div>
+
+      {c.isolamento === 'worktree' && (
+        <div className="campo">
+          <label htmlFor="merge">Merge das worktrees</label>
+          <select id="merge" className="entrada" value={c.mergeWorktree} onChange={(e) => mudar({ mergeWorktree: e.target.value as MergeWorktree })}>
+            <option value="manual">Manual: botão Mesclar na tarefa concluída</option>
+            <option value="automatico">Automático ao concluir a tarefa</option>
+          </select>
+          <span className="ajuda">Em caso de conflito o merge é desfeito e a tarefa fica aguardando você.</span>
+        </div>
+      )}
 
       <div className="campo">
         <label className="linha" style={{ fontWeight: 600 }}>

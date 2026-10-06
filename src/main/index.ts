@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Configuracao, ModoPermissao, NovaSessao, RespostaPendencia, Tema } from '@shared/tipos'
+import type { Configuracao, ModoPermissao, NovaSessao, OpcoesExecucao, PedidoTarefa, RespostaPendencia, Tema } from '@shared/tipos'
 import {
   infoProjeto,
   lerConfig,
@@ -11,6 +11,9 @@ import {
   tocarProjeto
 } from './armazenamento'
 import { ObservadorPlanos } from './planos'
+import { nomeBranchPlano } from '@shared/execucao'
+import { ExecutorTarefas } from './tarefas'
+import { atualizarPlugin, statusPlugin } from './plugin'
 import { GerenciadorSessoes, listarModelos } from './sessoes'
 import * as git from './git'
 import { notificarPendencia } from './notificacoes'
@@ -39,8 +42,10 @@ const sessoes = new GerenciadorSessoes(
   lerConfig,
   (s, p) => {
     if (lerConfig().notificacoes) notificarPendencia(janela, s, p, (id) => enviar('sessoes:abrir', id))
-  }
+  },
+  (s, fim) => tarefas.aoTerminar(s, fim)
 )
+const tarefas: ExecutorTarefas = new ExecutorTarefas(sessoes, lerConfig, (fila) => enviar('fila:mudou', fila))
 
 function criarJanela(): void {
   janela = new BrowserWindow({
@@ -91,7 +96,21 @@ function registrarIpc(): void {
     return infoProjeto(caminho)
   })
 
-  ipcMain.handle('planos:observar', (_e, projeto: string) => planos.observar(projeto))
+  ipcMain.handle('planos:observar', (_e, projeto: string) => {
+    tarefas.recuperarOrfas(projeto)
+    return planos.observar(projeto)
+  })
+  ipcMain.handle('planos:executarTarefas', (_e, p: string, plano: string, pedidos: PedidoTarefa[], o: OpcoesExecucao) =>
+    tarefas.executar(p, plano, pedidos, o)
+  )
+  ipcMain.handle('planos:pularTarefa', (_e, p: string, plano: string, t: string) => tarefas.pular(p, plano, t))
+  ipcMain.handle('planos:mesclarTarefa', (_e, p: string, plano: string, t: string) => tarefas.mesclar(p, plano, t))
+  ipcMain.handle('planos:prepararBranch', async (_e, p: string, plano: string) => {
+    const r = await git.garantirBranch(p, nomeBranchPlano(plano))
+    if (!r.ok) throw new Error(`Não foi possível usar o branch do plano: ${r.saida}`)
+  })
+  ipcMain.handle('planos:fila', () => tarefas.listarFila())
+  ipcMain.handle('planos:cancelarNaFila', (_e, p: string, plano: string, t: string) => tarefas.cancelarNaFila(p, plano, t))
   ipcMain.handle('planos:parar', (_e, projeto: string) => planos.parar(projeto))
 
   ipcMain.handle('sessoes:listar', () => sessoes.listar())
@@ -110,6 +129,8 @@ function registrarIpc(): void {
   ipcMain.handle('config:salvar', (_e, c: Configuracao) => {
     const salva = salvarConfig(c)
     aplicarTema(salva.tema)
+    // Limite aumentado: tarefas da fila podem começar agora.
+    tarefas.bombear()
     return salva
   })
   ipcMain.handle('config:tema', (_e, tema: Tema) => {
@@ -144,6 +165,8 @@ function registrarIpc(): void {
   ipcMain.handle('git:log', (_e, p: string) => git.log(p))
   ipcMain.handle('git:iniciar', (_e, p: string) => git.iniciarRepo(p))
 
+  ipcMain.handle('plugin:status', () => statusPlugin(lerConfig()))
+  ipcMain.handle('plugin:atualizar', () => atualizarPlugin(lerConfig()))
   ipcMain.handle('modelos', () => listarModelos(lerConfig()))
   ipcMain.handle('login:status', () => statusLogin(lerConfig()))
   ipcMain.handle('login:abrir', () => abrirLogin(lerConfig()))

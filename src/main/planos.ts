@@ -1,14 +1,82 @@
 // Observa .claude/orch/planos/ de cada projeto aberto e publica a lista de planos a cada mudança.
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FSWatcher } from 'chokidar'
 import { ordenarPlanos, planoDoJson, planoDoMd } from '@shared/plano'
-import type { Plano } from '@shared/tipos'
+import { statusDerivado } from '@shared/execucao'
+import type { Plano, StatusTarefa } from '@shared/tipos'
 
 type Ouvinte = (projeto: string, planos: Plano[]) => void
 
 export const pastaPlanos = (projeto: string) => join(projeto, '.claude', 'orch', 'planos')
+
+export const arquivoJsonDoPlano = (projeto: string, id: string) => join(pastaPlanos(projeto), `${id}.json`)
+
+/** ISO 8601 com o fuso local (2026-10-06T15:30:00-03:00), como o plugin grava. */
+export function agoraLocal(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  const off = -d.getTimezoneOffset()
+  const sinal = off >= 0 ? '+' : '-'
+  const o = Math.abs(off)
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
+    `${sinal}${p(Math.floor(o / 60))}:${p(o % 60)}`
+  )
+}
+
+export interface MudancaTarefa {
+  status?: StatusTarefa
+  inicio?: string | null
+  fim?: string | null
+  tentativas?: number
+  resultado?: string | null
+  modelo?: string | null
+  sessaoApp?: string | null
+  pasta?: string | null
+  merge?: 'pendente' | 'mesclado' | 'conflito' | null
+}
+
+export interface EventoNovo {
+  tipo: string
+  texto: string
+}
+
+/**
+ * Altera uma tarefa no .json do plano, registra o evento e recalcula o status do plano.
+ * No modo manual o app é o único a gravar o estado das tarefas (várias sessões escrevendo o mesmo arquivo
+ * se atropelariam). Leitura e gravação são síncronas: duas mudanças nunca se intercalam.
+ */
+export function alterarTarefa(projeto: string, planoId: string, tarefaId: string, mudanca: MudancaTarefa, evento?: EventoNovo): void {
+  const caminho = arquivoJsonDoPlano(projeto, planoId)
+  const raw = JSON.parse(readFileSync(caminho, 'utf8')) as Record<string, unknown>
+  const tarefas = Array.isArray(raw.tarefas) ? (raw.tarefas as Record<string, unknown>[]) : []
+  const t = tarefas.find((x) => x.id === tarefaId)
+  if (!t) throw new Error(`Tarefa ${tarefaId} não encontrada no plano ${planoId}.`)
+  Object.assign(t, mudanca)
+
+  const agora = agoraLocal()
+  raw.atualizado = agora
+  raw.status = statusDerivado(tarefas as { status: StatusTarefa }[], String(raw.status ?? 'planejado') as Plano['status'])
+  if (evento) {
+    const eventos = Array.isArray(raw.eventos) ? (raw.eventos as unknown[]) : []
+    eventos.push({ quando: agora, tarefa: tarefaId, tipo: evento.tipo, texto: evento.texto })
+    raw.eventos = eventos
+  }
+  const tmp = `${caminho}.tmp`
+  writeFileSync(tmp, JSON.stringify(raw, null, 2), 'utf8')
+  renameSync(tmp, caminho)
+}
+
+/** O plano como o app o enxerga agora (só planos com .json podem ser executados tarefa a tarefa). */
+export function lerPlanoJson(projeto: string, planoId: string): Plano {
+  const caminho = arquivoJsonDoPlano(projeto, planoId)
+  if (!existsSync(caminho)) {
+    throw new Error('Este plano não tem o arquivo .json (criado por uma versão anterior do orch). Execute-o no modo automático.')
+  }
+  const md = join(pastaPlanos(projeto), `${planoId}.md`)
+  return planoDoJson(JSON.parse(readFileSync(caminho, 'utf8')), existsSync(md) ? md : null)
+}
 
 /** Último estado válido de cada arquivo: um JSON lido no meio da escrita não apaga o plano da tela. */
 const ultimoValido = new Map<string, Plano>()

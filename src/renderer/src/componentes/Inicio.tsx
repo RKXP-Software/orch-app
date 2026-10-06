@@ -210,6 +210,12 @@ export function Inicio({
               Plano parado no meio? Abra-o e use <strong>Retomar</strong>: as tarefas já concluídas são mantidas.
             </p>
             <p>
+              Quer controlar o gasto? No detalhe do plano, troque para <strong>Manual por ondas</strong>: marque as tarefas
+              que quer rodar em cada onda, escolha o modelo da onda (ou de cada tarefa) e clique em <strong>Executar</strong>.
+              O limite de tarefas em paralelo fica em <strong>Configurações</strong>; o que passar dele espera na fila. A aba{' '}
+              <strong>Paralelo</strong> mostra de 1 a 6 conversas lado a lado.
+            </p>
+            <p>
               Toda execução fica gravada no projeto. Na aba <strong>Execuções</strong> você reabre qualquer uma e usa{' '}
               <strong>Continuar conversa</strong> para retomar de onde parou.
             </p>

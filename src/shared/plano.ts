@@ -1,10 +1,12 @@
 // Leitura dos planos do orch: o .json (plugin ≥ 0.4.0) é o formato principal;
 // o .md é lido como fallback para planos criados por versões anteriores.
 
-import type { EventoPlano, Plano, StatusPlano, StatusTarefa, Tarefa } from './tipos'
+import type { EstadoMerge, EventoPlano, Plano, StatusPlano, StatusTarefa, Tarefa } from './tipos'
 
 const STATUS_PLANO: StatusPlano[] = ['planejado', 'em-execucao', 'concluido', 'parcial', 'cancelado']
 const STATUS_TAREFA: StatusTarefa[] = ['pendente', 'em-andamento', 'concluida', 'falhou', 'pulada']
+
+const ESTADOS_MERGE: EstadoMerge[] = ['pendente', 'mesclado', 'conflito']
 
 function semAcento(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -87,7 +89,11 @@ export function planoDoJson(bruto: unknown, arquivoMd: string | null = null): Pl
       inicio: texto(t.inicio),
       fim: texto(t.fim),
       tentativas: typeof t.tentativas === 'number' ? t.tentativas : 0,
-      resultado: texto(t.resultado)
+      resultado: texto(t.resultado),
+      modelo: texto(t.modelo),
+      sessaoApp: texto(t.sessaoApp),
+      pasta: texto(t.pasta),
+      merge: texto(t.merge) ? normalizarStatus(t.merge, ESTADOS_MERGE, 'pendente') : null
     }
   })
 
@@ -201,7 +207,11 @@ export function planoDoMd(conteudo: string, arquivoMd: string): Plano {
       inicio: null,
       fim: null,
       tentativas: 0,
-      resultado: resultados.get(c[0]) ?? null
+      resultado: resultados.get(c[0]) ?? null,
+      modelo: null,
+      sessaoApp: null,
+      pasta: null,
+      merge: null
     }))
 
   const eventos: EventoPlano[] = linhasDeTabela(secao(linhas, /Registro de execu/))

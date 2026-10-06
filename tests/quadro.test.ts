@@ -8,7 +8,7 @@ function plano(id: string, status: StatusPlano, demanda: string, tarefas: Status
     commitInicial: null, versaoOrch: null, ondas: [], eventos: [], resultadoFinal: null, origem: 'json', arquivoMd: null,
     tarefas: tarefas.map((s, i) => ({
       id: `T${i + 1}`, titulo: '', executor: '', dependeDe: [], arquivos: [], prontoQuando: null, status: s,
-      inicio: null, fim: null, tentativas: 0, resultado: null
+      inicio: null, fim: null, tentativas: 0, resultado: null, modelo: null, sessaoApp: null, pasta: null, merge: null
     }))
   }
 }

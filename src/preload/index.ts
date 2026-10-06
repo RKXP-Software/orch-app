@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { OrchApi, Plano, Sessao } from '@shared/tipos'
+import type { ItemFila, OrchApi, Plano, Sessao } from '@shared/tipos'
 
 function ouvir<A extends unknown[]>(canal: string, cb: (...args: A) => void): () => void {
   const h = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -17,7 +17,14 @@ const api: OrchApi = {
   planos: {
     observar: (p) => ipcRenderer.invoke('planos:observar', p),
     pararDeObservar: (p) => ipcRenderer.invoke('planos:parar', p),
-    aoMudar: (cb) => ouvir<[string, Plano[]]>('planos:mudou', cb)
+    aoMudar: (cb) => ouvir<[string, Plano[]]>('planos:mudou', cb),
+    executarTarefas: (p, plano, pedidos, o) => ipcRenderer.invoke('planos:executarTarefas', p, plano, pedidos, o),
+    pularTarefa: (p, plano, t) => ipcRenderer.invoke('planos:pularTarefa', p, plano, t),
+    mesclarTarefa: (p, plano, t) => ipcRenderer.invoke('planos:mesclarTarefa', p, plano, t),
+    prepararBranch: (p, plano) => ipcRenderer.invoke('planos:prepararBranch', p, plano),
+    fila: () => ipcRenderer.invoke('planos:fila'),
+    cancelarNaFila: (p, plano, t) => ipcRenderer.invoke('planos:cancelarNaFila', p, plano, t),
+    aoMudarFila: (cb) => ouvir<[ItemFila[]]>('fila:mudou', cb)
   },
   sessoes: {
     listar: () => ipcRenderer.invoke('sessoes:listar'),
@@ -64,6 +71,10 @@ const api: OrchApi = {
     apagarBranch: (p, n) => ipcRenderer.invoke('git:apagarBranch', p, n),
     log: (p) => ipcRenderer.invoke('git:log', p),
     iniciar: (p) => ipcRenderer.invoke('git:iniciar', p)
+  },
+  plugin: {
+    status: () => ipcRenderer.invoke('plugin:status'),
+    atualizar: () => ipcRenderer.invoke('plugin:atualizar')
   },
   modelos: () => ipcRenderer.invoke('modelos'),
   login: {

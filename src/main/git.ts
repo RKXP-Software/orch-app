@@ -174,3 +174,47 @@ export async function log(projeto: string, n = 50): Promise<Commit[]> {
 }
 
 export const iniciarRepo = (projeto: string) => resultado(projeto, ['init'])
+
+// ---------- Execução de planos: branch do plano e worktrees por tarefa ----------
+
+/** Vai para o branch (criando-o a partir do atual se ainda não existe). Sem efeito se já está nele. */
+export async function garantirBranch(projeto: string, nome: string): Promise<ResultadoGit> {
+  const atual = await git(projeto, ['branch', '--show-current'])
+  if (atual.ok && atual.stdout.trim() === nome) return { ok: true, saida: '' }
+  const existe = await git(projeto, ['rev-parse', '--verify', '--quiet', `refs/heads/${nome}`])
+  return existe.ok ? resultado(projeto, ['switch', nome]) : criarBranch(projeto, nome, true)
+}
+
+/** Nova worktree em `pasta`, num branch novo (ou existente) a partir do HEAD do projeto. */
+export async function criarWorktree(projeto: string, pasta: string, branch: string): Promise<ResultadoGit> {
+  const existe = await git(projeto, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])
+  return resultado(projeto, existe.ok ? ['worktree', 'add', pasta, branch] : ['worktree', 'add', '-b', branch, pasta])
+}
+
+/** Registra no branch da worktree tudo o que a tarefa alterou. `ok` com `saida` vazia = nada a registrar. */
+export async function registrarTudo(pasta: string, mensagem: string): Promise<ResultadoGit> {
+  const mudou = await git(pasta, ['status', '--porcelain'])
+  if (!mudou.ok) return { ok: false, saida: mudou.stderr }
+  if (mudou.stdout.trim() === '') return { ok: true, saida: '' }
+  const add = await resultado(pasta, ['add', '-A'])
+  if (!add.ok) return add
+  return resultado(pasta, ['commit', '-m', mensagem])
+}
+
+/** Mescla o branch no atual do projeto. Em conflito, desfaz o merge e devolve `ok: false`. */
+export async function mesclar(projeto: string, branch: string): Promise<ResultadoGit> {
+  const r = await resultado(projeto, ['merge', '--no-ff', '--no-edit', branch], 120_000)
+  if (!r.ok) await git(projeto, ['merge', '--abort'])
+  return r
+}
+
+export async function removerWorktree(projeto: string, pasta: string, branch: string): Promise<void> {
+  await git(projeto, ['worktree', 'remove', '--force', pasta])
+  await git(projeto, ['branch', '-d', branch])
+}
+
+/** Quantos commits o branch tem que o atual do projeto ainda não tem. */
+export async function commitsAFrente(projeto: string, branch: string): Promise<number> {
+  const r = await git(projeto, ['rev-list', '--count', `HEAD..${branch}`])
+  return r.ok ? Number.parseInt(r.stdout.trim(), 10) || 0 : 0
+}
