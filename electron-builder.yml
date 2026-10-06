@@ -1,0 +1,19 @@
+appId: br.com.rkxp.orch
+productName: Orch
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# O SDK executa o binário nativo do Claude Code: ele não pode ficar dentro do asar.
+asarUnpack:
+  - node_modules/@anthropic-ai/**
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: Orch-Setup-${version}.${ext}

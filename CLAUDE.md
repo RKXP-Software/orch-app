@@ -1,0 +1,9 @@
+# Orch app — desenvolvimento
+
+App Electron + React + TypeScript que executa o plugin orch pelo Claude Agent SDK. Visão geral no [README.md](README.md).
+
+- Código, comentários e UI em pt-BR, nomes em português (`sessao`, `plano`, `tarefa`), como no plugin.
+- `src/shared/` não pode importar Electron nem Node: é usado também pela interface.
+- O SDK e o chokidar são ESM-only e o processo principal é CJS: importe-os com `await import(...)` e use `import type` para os tipos.
+- O formato `.claude/orch/planos/<id>.json` é contrato com o plugin (repositório RKXP-Software/orch, `plugin/templates/plano.json`). Mudou o formato? Mude os dois lados e o `schema`.
+- Antes de concluir uma mudança: `npm run typecheck`, `npm test` e `npx electron-vite build`.

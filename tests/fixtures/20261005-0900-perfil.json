@@ -1,0 +1,22 @@
+{
+  "schema": "orch.plano/1",
+  "id": "20261005-0900-perfil",
+  "titulo": "Tela de perfil",
+  "status": "em-execucao",
+  "demanda": "crie a tela de perfil",
+  "objetivo": "Tela de perfil editável.",
+  "grupo": null,
+  "dependeDosPlanos": [],
+  "criado": "2026-10-05T09:00:00-03:00",
+  "atualizado": "2026-10-05T09:20:00-03:00",
+  "commitInicial": "def5678",
+  "versaoOrch": "0.4.0",
+  "ondas": [],
+  "tarefas": [
+    { "id": "T1", "titulo": "Pesquisar", "executor": "orch:pesquisador", "dependeDe": [], "arquivos": [], "prontoQuando": "x", "status": "concluida", "inicio": null, "fim": null, "tentativas": 0, "resultado": "ok" },
+    { "id": "T2", "titulo": "Implementar", "executor": "orch:desenvolvedor", "dependeDe": ["T1"], "arquivos": ["src/perfil.tsx"], "prontoQuando": "y", "status": "pendente", "inicio": null, "fim": null, "tentativas": 0, "resultado": null },
+    { "id": "T3", "titulo": "Revisar", "executor": "orch:revisor", "dependeDe": ["T2"], "arquivos": [], "prontoQuando": "z", "status": "Pendente", "inicio": null, "fim": null, "tentativas": 0, "resultado": null }
+  ],
+  "eventos": [{ "quando": "2026-10-05T09:00:00-03:00", "tarefa": null, "tipo": "plano-criado", "texto": "Plano criado" }],
+  "resultadoFinal": null
+}
