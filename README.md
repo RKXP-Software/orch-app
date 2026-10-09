@@ -2,6 +2,22 @@
 
 Interface gráfica (Windows) para o plugin [orch](https://github.com/RKXP-Software/orch) do Claude Code: inicie demandas, aprove permissões, responda perguntas e acompanhe o progresso de cada plano ao vivo.
 
+## Capturas de tela
+
+**Dashboard**: quadro kanban das demandas, do rascunho ao plano entregue.
+
+![Dashboard kanban](docs/img/dashboard.png)
+
+**Plano em modo manual por ondas**: marque as tarefas prontas, escolha o modelo por onda ou por tarefa e execute.
+
+![Plano em ondas](docs/img/plano-ondas.png)
+
+**Alterações**: arquivos modificados do projeto, com diff e commit.
+
+![Alterações e diff](docs/img/alteracoes.png)
+
+> Capturas feitas com um projeto de demonstração fictício.
+
 ## O que faz
 
 - **Dashboard**: quadro kanban de demandas (Ideias → Planejando → Planejado → Em execução → Concluído). Cada cartão descreve o que deve virar um plano; **Planejar…** manda o cartão para o orquestrador (com escolha de modelo e permissões) e o cartão passa a seguir o plano gerado. Gravado no projeto em `.claude/orch/quadro.json`.
